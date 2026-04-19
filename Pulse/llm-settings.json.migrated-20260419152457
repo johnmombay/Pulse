@@ -1,0 +1,53 @@
+{
+  "AppName": "UniPulse",
+  "ModelId": "gemini-3.1-flash-lite-preview",
+  "ApiKeys": [
+    "AIzaSyCSPwI1y5p83Gty4njyAY1ke-5WTPH3dzg",
+    "AIzaSyCpan-PK16SbCORCHGPwhRUqyVt_eWzoT0",
+    "AIzaSyDhM_LaL_m_WR07Cr2lkg8pFipsPMJbenk",
+    "AIzaSyCGUeDqa9dr3zh3nBzwYUxBk7YlHwzTcGA"
+  ],
+  "McpServers": [],
+  "Skills": [
+    {
+      "Id": "11ab8264e7754e93bc4e0e5bf2b16da1",
+      "Name": "Unioil-SF Skills",
+      "Icon": "\u26A1",
+      "Description": "",
+      "Instructions": "# Unioil-SF Database Analysis \u0026 Usage Skill\r\n\r\n## Overview\r\nThis skill provides insight into the \\unioil-sf\\ database, specifically identifying active vs. legacy objects and mapping the relationships between core business entities.\r\n\r\n## Active Business Objects\r\nThese objects are critical for tracking sales performance, lead conversion, and operational activity:\r\n- **Lead**: Actively used for pipeline management, particularly for the **Fleet Card** segment. Contains detailed prospect information, volume projections, and conversion status.\r\n- **Account**: The central hub for all customer records.\r\n- **Opportunity_Sales_Order__c**: The primary source for transaction data. Use this instead of the deprecated \\Opportunity\\ table.\r\n- **Opportunity_Sales_Order_Line_Item__c**: Provides detailed product/volume breakdowns per transaction.\r\n- **Material__c**: The product master table.\r\n- **Blanket_Purchase_Orders__c**: Tracks long-term customer commitments.\r\n- **ATL_ATW__c \u0026 ATL_ATW_Line_Items__c**: Used for operational Authority to Load/Withdraw processes.\r\n\r\n## Legacy \u0026 Unused Objects\r\nThese tables are either deprecated, system-specific, or do not contain actionable business data:\r\n- **Opportunity**: **Deprecated.** Contains legacy records with missing \\Amount\\ data and no linked line items. All current reporting should ignore this table.\r\n- **LEXMAGICMOVER__* (All tables)**: System tables related to legacy Salesforce Lightning migration tools.\r\n- **SFGA__* (All tables)**: System tables related to Google Ads integration. Likely not used for internal performance analytics.\r\n- **Campaign / CampaignMember**: Standard CRM objects that appear to have limited or no integration with the current sales-focused reporting pipeline.\r\n\r\n## Relationship Mapping\r\nTo analyze performance, use the following join paths:\r\n1. **Lead to Account**: \\Lead.ConvertedAccountId\\ -\u003E \\Account.SalesforceId\\\r\n2. **Account to Sales Order**: \\Account.SalesforceId\\ -\u003E \\Opportunity_Sales_Order__c.AccountId\\\r\n3. **Sales Order to Line Items**: \\Opportunity_Sales_Order__c.SalesforceId\\ -\u003E \\Opportunity_Sales_Order_Line_Item__c.Opportunity_Sales_Order__c\\\r\n4. **Line Item to Material**: \\Opportunity_Sales_Order_Line_Item__c.Material__c\\ -\u003E \\Material__c.SalesforceId\\\r\n\r\n## Analytical Best Practices\r\n- **Transaction Data**: Always pull volume and revenue from \\Opportunity_Sales_Order__c\\ using the \\Total_Amount_VAT_Inc__c\\ field. The \\Total_Amount__c\\ field is not populated.\r\n- **Performance Monitoring**: Focus on 8-week rolling averages for top 5 accounts: METRO OIL SUBIC INC., SEAOIL PHILIPPINES, INC., POWERZONE PETROLEUM PRODUCTS CORPORATION, ONE SOURCE FUEL MARKETING CORP., and UNO FUEL, INC.",
+      "IsActive": true
+    }
+  ],
+  "RagDocuments": [],
+  "DatabaseConnections": {
+    "unioil-sf": {
+      "Label": "Unioil Salesforce",
+      "Provider": 0,
+      "ConnectionString": "Server=BREAKTHROUGH;Database=UnioilSF;User Id=sa;Password=123456;TrustServerCertificate=True;",
+      "IsEnabled": true,
+      "ReadOnly": false,
+      "MaxRows": 500,
+      "AllowedSchemas": []
+    }
+  },
+  "TerminalSettings": {
+    "IsEnabled": true,
+    "DefaultShell": "powershell",
+    "WorkingDirectory": "",
+    "TimeoutSeconds": 30,
+    "MaxOutputLength": 8000
+  },
+  "AgentMail": {
+    "IsEnabled": true,
+    "ApiKey": "am_us_inbox_2c3e253530b1d197504fae74ec901440c558bdc9bb3eeaa9e4bf8304533533fb",
+    "BaseUrl": "https://api.agentmail.to/v0",
+    "DefaultInbox": "uspark@agentmail.to"
+  },
+  "FlatFileSources": [],
+  "Security": {
+    "MaxFailedLoginAttempts": 5,
+    "LoginLockoutHours": 1
+  },
+  "LogoFileName": null,
+  "LogoVersion": null
+}

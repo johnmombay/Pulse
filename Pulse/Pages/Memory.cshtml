@@ -1,0 +1,250 @@
+@page
+@model Pulse.Pages.MemoryModel
+@{
+    ViewData["Title"] = "Memory";
+}
+
+@section Styles {
+<style>
+    .importance-stars { color: #f59e0b; letter-spacing: .1em; }
+    .source-badge-auto   { background:#e0f2fe; color:#0369a1; }
+    .source-badge-manual { background:#dcfce7; color:#166534; }
+    .memory-content { max-width: 500px; white-space: pre-wrap; word-break: break-word; }
+</style>
+}
+
+<div class="container py-4" style="max-width:960px">
+
+    <div class="d-flex align-items-center justify-content-between mb-4">
+        <div>
+            <h2 class="mb-0">🧠 Memory</h2>
+            <p class="text-muted small mb-0 mt-1">
+                Facts and preferences the agent remembers about you across every session.
+            </p>
+        </div>
+        <button type="button" class="btn btn-primary" onclick="openAddMemoryModal()">
+            ➕ Add Memory
+        </button>
+    </div>
+
+    @if (!Model.Memories.Any())
+    {
+        <div class="card shadow-sm text-center py-5 text-muted">
+            <div style="font-size:3rem">🧠</div>
+            <p class="mt-2 mb-1 fw-semibold">No memories yet.</p>
+            <p class="small">The agent will automatically remember important facts from your conversations, or you can add them manually.</p>
+            <button type="button" class="btn btn-outline-primary btn-sm mt-2" onclick="openAddMemoryModal()">
+                ➕ Add your first memory
+            </button>
+        </div>
+    }
+    else
+    {
+        @* ── Stats bar ── *@
+        <div class="d-flex gap-3 mb-3 flex-wrap">
+            <span class="badge bg-secondary fs-6 fw-normal px-3 py-2">
+                @Model.Memories.Count total
+            </span>
+            <span class="badge source-badge-auto fs-6 fw-normal px-3 py-2">
+                @Model.Memories.Count(m => m.Source == "auto") auto-extracted
+            </span>
+            <span class="badge source-badge-manual fs-6 fw-normal px-3 py-2">
+                @Model.Memories.Count(m => m.Source == "manual") manual
+            </span>
+            <span class="badge bg-light text-muted fs-6 fw-normal px-3 py-2">
+                @Model.Memories.Count(m => !m.IsActive) deleted
+            </span>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-3">Memory</th>
+                            <th style="width:110px">Category</th>
+                            <th style="width:100px">Importance</th>
+                            <th style="width:80px">Source</th>
+                            <th style="width:110px">Date</th>
+                            <th class="text-end pe-3" style="width:90px">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var mem in Model.Memories)
+                        {
+                            <tr class="@(mem.IsActive ? "" : "table-secondary text-muted")">
+                                <td class="ps-3">
+                                    <span class="memory-content small">@mem.Content</span>
+                                </td>
+                                <td>
+                                    @if (!string.IsNullOrWhiteSpace(mem.Category))
+                                    {
+                                        <span class="badge bg-light text-secondary border">@mem.Category</span>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="importance-stars">
+                                        @(new string('★', mem.Importance))@(new string('☆', 5 - mem.Importance))
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge px-2 py-1 small @(mem.Source == "auto" ? "source-badge-auto" : "source-badge-manual")">
+                                        @(mem.Source == "auto" ? "🤖 auto" : "✍️ manual")
+                                    </span>
+                                </td>
+                                <td class="text-muted small">@mem.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</td>
+                                <td class="text-end pe-3">
+                                    @if (mem.IsActive)
+                                    {
+                                        <div class="btn-group btn-group-sm">
+                                            <button type="button" class="btn btn-outline-secondary"
+                                                    data-mem-id="@mem.Id"
+                                                    data-mem-content="@mem.Content"
+                                                    data-mem-category="@(mem.Category ?? "")"
+                                                    data-mem-importance="@mem.Importance"
+                                                    onclick="openEditMemoryModal(this)">
+                                                ✏️
+                                            </button>
+                                            <button type="button" class="btn btn-outline-danger"
+                                                    onclick="deleteMemory(@mem.Id, this)">
+                                                🗑
+                                            </button>
+                                        </div>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@* ═══ ADD / EDIT MODAL ═══════════════════════════════════════════════════════ *@
+<div class="modal fade" id="memoryModal" tabindex="-1" aria-labelledby="memoryModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="memoryModalLabel">Add Memory</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="memoryForm" method="post" asp-page-handler="Save" novalidate>
+                @Html.AntiForgeryToken()
+                <div class="modal-body">
+                    <div id="memoryModalError" class="alert alert-danger py-2 px-3 d-none">
+                        <span id="memoryModalErrorText"></span>
+                    </div>
+
+                    <input type="hidden" name="Input.Id" id="memInputId" />
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Content <span class="text-danger">*</span></label>
+                        <textarea name="Input.Content" id="memInputContent" class="form-control" rows="3"
+                                  placeholder="e.g. User prefers concise bullet-point answers"></textarea>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col">
+                            <label class="form-label fw-semibold">
+                                Category <span class="text-muted fw-normal small">(optional)</span>
+                            </label>
+                            <input name="Input.Category" id="memInputCategory" class="form-control"
+                                   placeholder="preference, project, personal…" />
+                        </div>
+                        <div class="col-auto" style="width:140px">
+                            <label class="form-label fw-semibold">Importance</label>
+                            <select name="Input.Importance" id="memInputImportance" class="form-select">
+                                <option value="1">☆☆☆☆☆ Low</option>
+                                <option value="2">★☆☆☆☆</option>
+                                <option value="3" selected>★★★☆☆ Normal</option>
+                                <option value="4">★★★★☆ High</option>
+                                <option value="5">★★★★★ Critical</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" id="memorySaveBtn" class="btn btn-primary">💾 Save Memory</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+(function () {
+
+    // ── Modal open helpers ────────────────────────────────────────────────────
+    window.openAddMemoryModal = function () {
+        document.getElementById('memoryModalLabel').textContent = 'Add Memory';
+        document.getElementById('memoryModalError').classList.add('d-none');
+        document.getElementById('memInputId').value         = '';
+        document.getElementById('memInputContent').value    = '';
+        document.getElementById('memInputCategory').value   = '';
+        document.getElementById('memInputImportance').value = '3';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('memoryModal')).show();
+        setTimeout(() => document.getElementById('memInputContent').focus(), 300);
+    };
+
+    window.openEditMemoryModal = function (btn) {
+        const d = btn.dataset;
+        document.getElementById('memoryModalLabel').textContent = 'Edit Memory';
+        document.getElementById('memoryModalError').classList.add('d-none');
+        document.getElementById('memInputId').value         = d.memId;
+        document.getElementById('memInputContent').value    = d.memContent;
+        document.getElementById('memInputCategory').value   = d.memCategory;
+        document.getElementById('memInputImportance').value = d.memImportance;
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('memoryModal')).show();
+    };
+
+    // ── Delete ────────────────────────────────────────────────────────────────
+    window.deleteMemory = async function (id, btn) {
+        if (!confirm('Delete this memory?\n\nThe agent will no longer use it in future sessions.')) return;
+        btn.disabled = true;
+
+        const fd = new FormData();
+        fd.append('__RequestVerificationToken',
+            document.querySelector('[name="__RequestVerificationToken"]').value);
+
+        try {
+            const resp = await fetch(`?handler=Delete&id=${id}`, { method: 'POST', body: fd });
+            if ((await resp.json()).success) location.reload();
+            else alert('Delete failed.');
+        } catch { alert('Network error.'); }
+        finally { btn.disabled = false; }
+    };
+
+    // ── Save (AJAX) ───────────────────────────────────────────────────────────
+    document.getElementById('memoryForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const btn  = document.getElementById('memorySaveBtn');
+        const orig = btn.innerHTML;
+        document.getElementById('memoryModalError').classList.add('d-none');
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+        btn.disabled  = true;
+
+        try {
+            const resp = await fetch(this.action, { method: 'POST', body: new FormData(this) });
+            const result = await resp.json();
+            if (result.success) {
+                bootstrap.Modal.getInstance(document.getElementById('memoryModal'))?.hide();
+                setTimeout(() => location.reload(), 250);
+            } else {
+                document.getElementById('memoryModalErrorText').textContent = result.error ?? 'Unknown error.';
+                document.getElementById('memoryModalError').classList.remove('d-none');
+            }
+        } catch {
+            document.getElementById('memoryModalErrorText').textContent = 'Network error.';
+            document.getElementById('memoryModalError').classList.remove('d-none');
+        } finally {
+            btn.innerHTML = orig;
+            btn.disabled  = false;
+        }
+    });
+
+})();
+</script>
+}

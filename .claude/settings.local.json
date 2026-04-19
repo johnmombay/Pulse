@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pwsh -NoProfile -Command ' *)",
+      "Bash(pwsh -NoProfile -ExecutionPolicy Bypass -File ./rename.ps1)",
+      "Bash(dotnet build *)",
+      "Bash(dotnet ef *)"
+    ]
+  }
+}

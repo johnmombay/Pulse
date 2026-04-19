@@ -1,0 +1,207 @@
+@page
+@model Pulse.Pages.Admin.UsersModel
+@{
+    ViewData["Title"] = "User Management";
+}
+
+@if (!string.IsNullOrEmpty(Model.StatusMessage))
+{
+    <div class="alert alert-success alert-dismissible mb-4" role="alert">
+        @Model.StatusMessage
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+}
+
+@if (!ModelState.IsValid)
+{
+    <div class="alert alert-danger mb-4" role="alert">
+        <ul class="mb-0 small">
+            @foreach (var error in ModelState.Values.SelectMany(v => v.Errors))
+            {
+                <li>@error.ErrorMessage</li>
+            }
+        </ul>
+    </div>
+}
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <p class="text-muted small mb-0">@Model.Users.Count user(s) total</p>
+    </div>
+    <button class="btn btn-primary btn-sm d-flex align-items-center gap-2"
+            data-bs-toggle="modal" data-bs-target="#createModal">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        New User
+    </button>
+</div>
+
+<div class="bp-card overflow-hidden">
+    <table class="table table-hover align-middle mb-0">
+        <thead>
+            <tr>
+                <th class="ps-4" style="width:35%">Name</th>
+                <th style="width:35%">Email</th>
+                <th style="width:15%">Role</th>
+                <th class="text-end pe-4" style="width:15%">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!Model.Users.Any())
+            {
+                <tr>
+                    <td colspan="4" class="text-center text-muted py-5">No users found.</td>
+                </tr>
+            }
+            @foreach (var u in Model.Users)
+            {
+                <tr>
+                    <td class="ps-4 fw-medium">@(u.FullName ?? "—")</td>
+                    <td class="text-muted">@u.Email</td>
+                    <td>
+                        @if (u.Role == "Admin")
+                        {
+                            <span class="badge bg-primary bg-opacity-10 text-primary">Admin</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary bg-opacity-10 text-secondary">User</span>
+                        }
+                    </td>
+                    <td class="text-end pe-4">
+                        <div class="d-flex gap-2 justify-content-end">
+                            <button class="btn btn-sm btn-outline-secondary"
+                                    data-bs-toggle="modal" data-bs-target="#editModal"
+                                    data-userid="@u.Id"
+                                    data-fullname="@u.FullName"
+                                    data-email="@u.Email"
+                                    data-role="@u.Role"
+                                    title="Edit user">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                     stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                                    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                                    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                </svg>
+                            </button>
+                            <form method="post" asp-page-handler="Delete"
+                                  onsubmit="return confirm('Delete @Html.Raw(u.Email?.Replace("'", "\\'"))? This cannot be undone.')">
+                                <input type="hidden" name="userId" value="@u.Id" />
+                                <button class="btn btn-sm btn-outline-danger" type="submit" title="Delete user">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                         stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                                        <polyline points="3 6 5 6 21 6"/>
+                                        <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+                                        <path d="M10 11v6M14 11v6"/>
+                                        <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+                                    </svg>
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<!-- ── Create Modal ───────────────────────────────────────────────────── -->
+<div class="modal fade" id="createModal" tabindex="-1" aria-labelledby="createModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" asp-page-handler="Create">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-semibold" id="createModalLabel">New User</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body pt-3">
+                    <div class="mb-3">
+                        <label asp-for="Create.FullName" class="form-label fw-medium">Full Name</label>
+                        <input asp-for="Create.FullName" class="form-control" placeholder="Jane Smith" />
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="Create.Email" class="form-label fw-medium">Email</label>
+                        <input asp-for="Create.Email" class="form-control" placeholder="jane@example.com" />
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="Create.Password" class="form-label fw-medium">Password</label>
+                        <input asp-for="Create.Password" type="password" class="form-control" />
+                    </div>
+                    <div class="mb-1">
+                        <label asp-for="Create.Role" class="form-label fw-medium">Role</label>
+                        <select asp-for="Create.Role" class="form-select">
+                            @foreach (var role in Model.AvailableRoles)
+                            {
+                                <option value="@role">@role</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create User</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ── Edit Modal ────────────────────────────────────────────────────── -->
+<div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" asp-page-handler="Edit">
+                <input type="hidden" asp-for="Edit.UserId" id="Edit_UserId" />
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-semibold" id="editModalLabel">Edit User</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body pt-3">
+                    <div class="mb-3">
+                        <label asp-for="Edit.FullName" class="form-label fw-medium">Full Name</label>
+                        <input asp-for="Edit.FullName" id="Edit_FullName" class="form-control" />
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="Edit.Email" class="form-label fw-medium">Email</label>
+                        <input asp-for="Edit.Email" id="Edit_Email" class="form-control" />
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="Edit.Role" class="form-label fw-medium">Role</label>
+                        <select asp-for="Edit.Role" id="Edit_Role" class="form-select">
+                            @foreach (var role in Model.AvailableRoles)
+                            {
+                                <option value="@role">@role</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-1">
+                        <label asp-for="Edit.NewPassword" class="form-label fw-medium">
+                            New Password
+                            <span class="text-muted fw-normal">(leave blank to keep current)</span>
+                        </label>
+                        <input asp-for="Edit.NewPassword" id="Edit_NewPassword" type="password" class="form-control" />
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+document.querySelectorAll('[data-bs-target="#editModal"]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        document.getElementById('Edit_UserId').value    = this.dataset.userid    ?? '';
+        document.getElementById('Edit_FullName').value  = this.dataset.fullname  ?? '';
+        document.getElementById('Edit_Email').value     = this.dataset.email     ?? '';
+        document.getElementById('Edit_Role').value      = this.dataset.role      ?? 'User';
+        document.getElementById('Edit_NewPassword').value = '';
+    });
+});
+</script>
+}

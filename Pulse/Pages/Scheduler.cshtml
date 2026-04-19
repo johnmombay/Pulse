@@ -1,0 +1,513 @@
+@page
+@model SchedulerModel
+@using Pulse.Models
+@{
+    ViewData["Title"] = "Scheduler & Alerts";
+    var successMsg = TempData["SchedulerSuccess"] as string;
+}
+
+@section Styles {
+<style>
+    .freq-badge { font-size:.7rem; text-transform:uppercase; letter-spacing:.05em; }
+    .delivery-icon { font-size:1rem; }
+    .status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; }
+    .status-idle    { background:#adb5bd; }
+    .status-success { background:#198754; }
+    .status-error   { background:#dc3545; }
+    .status-running { background:#0d6efd; animation:pulse .8s infinite alternate; }
+    @@keyframes pulse { from{opacity:1} to{opacity:.4} }
+    .instr-cell { max-width:300px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:.85rem; color:#6c757d; }
+    #taskInstructions { font-size:.9rem; }
+    .next-run-text { font-size:.78rem; color:#6c757d; white-space:nowrap; }
+</style>
+}
+
+<div class="d-flex align-items-center gap-3 mb-4">
+    <h2 class="mb-0 fw-bold">📅 Scheduler &amp; Alerts</h2>
+    <button type="button" class="btn btn-primary btn-sm ms-auto" onclick="openAddModal()">
+        ➕ New Task
+    </button>
+</div>
+
+@if (successMsg != null)
+{
+    <div id="schedAlert" class="alert alert-success alert-dismissible d-flex align-items-center gap-2 mb-4">
+        ✅ <span>@successMsg</span>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+@* ── Task list ──────────────────────────────────────────────────────────────── *@
+@if (!Model.Tasks.Any())
+{
+    <div class="card shadow-sm">
+        <div class="card-body text-center py-5 text-muted">
+            <div style="font-size:3rem">📅</div>
+            <p class="mt-3 mb-1 fw-semibold">No scheduled tasks yet.</p>
+            <p class="small">Create a task to have the agent automatically run queries, send alerts, fetch news, or analyse data on a schedule.</p>
+            <button type="button" class="btn btn-primary btn-sm mt-2" onclick="openAddModal()">
+                ➕ Create your first task
+            </button>
+        </div>
+    </div>
+}
+else
+{
+    <div class="card shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">Status</th>
+                        <th>Title</th>
+                        <th>Instructions</th>
+                        <th>Frequency</th>
+                        <th>Delivery</th>
+                        <th>Last Run</th>
+                        <th>Next Run</th>
+                        <th class="text-end pe-3">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var task in Model.Tasks)
+                    {
+                        var statusClass = task.LastStatus switch
+                        {
+                            "success" => "status-success",
+                            "error"   => "status-error",
+                            "running" => "status-running",
+                            _         => "status-idle"
+                        };
+                        var freqLabel = task.FrequencyType switch
+                        {
+                            FrequencyType.Minutes => $"Every {task.FrequencyValue}m",
+                            FrequencyType.Hours   => $"Every {task.FrequencyValue}h",
+                            FrequencyType.Days    => task.FrequencyValue == 1 ? "Daily"   : $"Every {task.FrequencyValue}d",
+                            FrequencyType.Weeks   => task.FrequencyValue == 1 ? "Weekly"  : $"Every {task.FrequencyValue}w",
+                            FrequencyType.Months  => task.FrequencyValue == 1 ? "Monthly" : $"Every {task.FrequencyValue}mo",
+                            FrequencyType.OneTime => "One-time",
+                            _                     => "-"
+                        };
+                        var delivIcon = task.DeliveryType switch
+                        {
+                            DeliveryType.Email     => "📧",
+                            DeliveryType.Both      => "📊📧",
+                            _                      => "📊"
+                        };
+                        <tr>
+                            <td class="ps-3">
+                                <span class="status-dot @statusClass" title="@task.LastStatus"></span>
+                                @if (!task.IsEnabled)
+                                {
+                                    <span class="badge bg-secondary ms-1" style="font-size:.65rem">Paused</span>
+                                }
+                            </td>
+                            <td class="fw-semibold">@task.Title</td>
+                            <td>
+                                @if (task.WorkflowDefinitionId.HasValue)
+                                {
+                                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle me-1" style="font-size:.65rem">🔗 Workflow</span>
+                                    <span class="text-muted small">@(task.WorkflowDefinition?.Title ?? $"#{task.WorkflowDefinitionId}")</span>
+                                }
+                                else
+                                {
+                                    <span class="instr-cell" title="@task.Instructions">@task.Instructions</span>
+                                }
+                            </td>
+                            <td>
+                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle freq-badge">
+                                    @freqLabel
+                                </span>
+                            </td>
+                            <td class="delivery-icon" title="@task.DeliveryType">@delivIcon</td>
+                            <td class="text-muted small">
+                                @(task.LastRunAt.HasValue
+                                    ? task.LastRunAt.Value.ToLocalTime().ToString("MMM d HH:mm")
+                                    : "—")
+                                @if (task.LastStatus == "error" && !string.IsNullOrWhiteSpace(task.LastError))
+                                {
+                                    <span class="text-danger ms-1" title="@task.LastError">⚠</span>
+                                }
+                            </td>
+                            <td>
+                                @if (task.NextRunAt.HasValue && task.IsEnabled && task.FrequencyType != FrequencyType.OneTime)
+                                {
+                                    <span class="next-run-text">@task.NextRunAt.Value.ToLocalTime().ToString("MMM d HH:mm")</span>
+                                }
+                                else if (task.FrequencyType == FrequencyType.OneTime && task.IsEnabled)
+                                {
+                                    <span class="next-run-text text-warning">Once</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted small">—</span>
+                                }
+                            </td>
+                            <td class="text-end pe-3">
+                                <div class="btn-group btn-group-sm">
+                                    <button type="button" class="btn btn-outline-secondary"
+                                            onclick="openEditModal(@task.Id)"
+                                            title="Edit">✏️</button>
+
+                                    <button type="button" class="btn btn-outline-info"
+                                            onclick="runNow(@task.Id, this)"
+                                            title="Run now">▶</button>
+
+                                    <form method="post" asp-page-handler="Toggle" class="d-inline">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@task.Id" />
+                                        <button type="submit"
+                                                class="btn @(task.IsEnabled ? "btn-outline-warning" : "btn-outline-success")"
+                                                title="@(task.IsEnabled ? "Pause" : "Resume")">
+                                            @(task.IsEnabled ? "⏸" : "▶")
+                                        </button>
+                                    </form>
+
+                                    <button type="button" class="btn btn-outline-danger"
+                                            onclick="confirmDelete(@task.Id, '@Html.Raw(task.Title.Replace("'","\\\'"))')"
+                                            title="Delete">🗑</button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer bg-white text-muted small py-2 px-3">
+            @Model.Tasks.Count task(s) — @Model.Tasks.Count(t => t.IsEnabled) enabled,
+            @Model.Tasks.Count(t => t.LastStatus == "error") with errors
+        </div>
+    </div>
+}
+
+@* ── Hidden delete form ─────────────────────────────────────────────────────── *@
+<form id="deleteForm" method="post" asp-page-handler="Delete">
+    @Html.AntiForgeryToken()
+    <input type="hidden" id="deleteId" name="id" value="" />
+</form>
+
+@* ══════════════════════════════════════════════════════════════════════════════
+   ADD / EDIT MODAL
+══════════════════════════════════════════════════════════════════════════════ *@
+<div class="modal fade" id="taskModal" tabindex="-1" aria-labelledby="taskModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="taskModalLabel">New Scheduled Task</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="taskForm" method="post" asp-page-handler="Save" novalidate>
+                @Html.AntiForgeryToken()
+                <div class="modal-body">
+
+                    <div id="taskModalError"   class="alert alert-danger  py-2 px-3 mb-3 d-none"><span id="taskModalErrorText"></span></div>
+                    <div id="taskModalSuccess" class="alert alert-success py-2 px-3 mb-3 d-none"><span id="taskModalSuccessText"></span></div>
+
+                    <input type="hidden" name="Input.Id" id="taskId" value="0" />
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Title <span class="text-danger">*</span></label>
+                        <input name="Input.Title" id="taskTitle" class="form-control"
+                               placeholder="e.g. Daily Sales Summary, News Briefing" maxlength="200" />
+                    </div>
+
+                    @* ── Task type toggle ────────────────────────────────────── *@
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Task Type</label>
+                        <div class="d-flex gap-2">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="taskTypeRadio"
+                                       id="typeInstructions" value="instructions" checked
+                                       onchange="onTaskTypeChange()" />
+                                <label class="form-check-label" for="typeInstructions">📝 Instructions</label>
+                            </div>
+                            <div class="form-check ms-3">
+                                <input class="form-check-input" type="radio" name="taskTypeRadio"
+                                       id="typeWorkflow" value="workflow"
+                                       onchange="onTaskTypeChange()" />
+                                <label class="form-check-label" for="typeWorkflow">🔗 Workflow</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    @* ── Instructions ────────────────────────────────────────── *@
+                    <div class="mb-3" id="instructionsGroup">
+                        <label class="form-label fw-semibold">Agent Instructions <span class="text-danger">*</span></label>
+                        <textarea name="Input.Instructions" id="taskInstructions" class="form-control" rows="5"
+                                  placeholder="Tell the agent exactly what to do…"></textarea>
+                        <div class="form-text">The agent has access to all enabled tools: database, terminal, MCP, AgentMail, etc.</div>
+                    </div>
+
+                    @* ── Workflow picker ─────────────────────────────────────── *@
+                    <div class="mb-3" id="workflowGroup" style="display:none">
+                        <label class="form-label fw-semibold">Workflow <span class="text-danger">*</span></label>
+                        <select name="Input.WorkflowDefinitionId" id="taskWorkflowId" class="form-select">
+                            <option value="">— select a workflow —</option>
+                            @foreach (var wf in Model.Workflows)
+                            {
+                                <option value="@wf.Id">@wf.Title (@wf.Steps.Count step(s))</option>
+                            }
+                        </select>
+                        <div class="form-text">The workflow's steps run in sequence with context passing and decision gates.</div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Frequency</label>
+                            <div class="input-group">
+                                <select name="Input.FrequencyType" id="taskFreqType" class="form-select" onchange="onFreqTypeChange()">
+                                    <option value="0">Every N minutes</option>
+                                    <option value="1">Every N hours</option>
+                                    <option value="2" selected>Every N days</option>
+                                    <option value="3">Every N weeks</option>
+                                    <option value="4">Every N months</option>
+                                    <option value="5">One time</option>
+                                </select>
+                                <input name="Input.FrequencyValue" id="taskFreqValue" type="number"
+                                       class="form-control" style="max-width:80px" min="1" max="999" value="1" />
+                            </div>
+                            <div class="form-text" id="taskFreqHint">Runs daily (at 9:00 UTC).</div>
+                        </div>
+                        <div class="col-md-6" id="taskScheduledAtGroup" style="display:none">
+                            <label class="form-label fw-semibold">Run at (UTC)</label>
+                            <input name="Input.ScheduledAt" id="taskScheduledAt" type="datetime-local"
+                                   class="form-control" />
+                            <div class="form-text">Leave blank to run immediately.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check form-switch mt-4 pt-1">
+                                <input class="form-check-input" type="checkbox" role="switch"
+                                       name="Input.IsEnabled" id="taskEnabled" checked />
+                                <label class="form-check-label fw-semibold" for="taskEnabled">
+                                    Enabled
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="my-3" />
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Delivery</label>
+                        <select name="Input.DeliveryType" id="taskDelivery" class="form-select" onchange="onDeliveryChange()">
+                            <option value="0">📊 Dashboard only</option>
+                            <option value="1">📧 Email only</option>
+                            <option value="2">📊📧 Dashboard + Email</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3" id="taskEmailGroup" style="display:none">
+                        <label class="form-label fw-semibold">
+                            Send results to <span class="text-danger">*</span>
+                        </label>
+                        <input name="Input.DeliveryEmail" id="taskEmail" type="email" class="form-control"
+                               placeholder="recipient@example.com" />
+                        <div class="form-text">
+                            Sent from <code>uspark@agentmail.to</code> via AgentMail.
+                            Make sure AgentMail is enabled in ⚙️ Settings.
+                        </div>
+                    </div>
+
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" id="taskSaveBtn" class="btn btn-primary">💾 Save Task</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+(function () {
+
+    const FREQ_HINTS = {
+        '0': n => `Runs every ${n} minute${n>1?'s':''}.`,
+        '1': n => `Runs every ${n} hour${n>1?'s':''}.`,
+        '2': n => n === 1 ? 'Runs daily (at 09:00 UTC).' : `Runs every ${n} days (at 09:00 UTC).`,
+        '3': n => n === 1 ? 'Runs every week (Monday 09:00 UTC).' : `Runs every ${n} weeks (Monday 09:00 UTC).`,
+        '4': n => n === 1 ? 'Runs on the 1st of each month (09:00 UTC).' : `Runs every ${n} months (1st, 09:00 UTC).`,
+        '5': _ => 'Runs once at the specified time, then disables itself.',
+    };
+
+    window.onFreqTypeChange = function () {
+        const type  = document.getElementById('taskFreqType').value;
+        const val   = parseInt(document.getElementById('taskFreqValue').value) || 1;
+        const hint  = document.getElementById('taskFreqHint');
+        hint.textContent = (FREQ_HINTS[type] ?? (_ => ''))(val);
+
+        const isOneTime = type === '5';
+        document.getElementById('taskFreqValue').style.display        = isOneTime ? 'none' : '';
+        document.getElementById('taskScheduledAtGroup').style.display = isOneTime ? ''     : 'none';
+    };
+
+    document.getElementById('taskFreqValue').addEventListener('input', () => {
+        const type = document.getElementById('taskFreqType').value;
+        const val  = parseInt(document.getElementById('taskFreqValue').value) || 1;
+        document.getElementById('taskFreqHint').textContent = (FREQ_HINTS[type] ?? (_ => ''))(val);
+    });
+
+    window.onDeliveryChange = function () {
+        const v = document.getElementById('taskDelivery').value;
+        document.getElementById('taskEmailGroup').style.display = (v === '1' || v === '2') ? '' : 'none';
+    };
+
+    window.onTaskTypeChange = function () {
+        const isWf = document.getElementById('typeWorkflow').checked;
+        document.getElementById('instructionsGroup').style.display = isWf ? 'none' : '';
+        document.getElementById('workflowGroup').style.display     = isWf ? ''     : 'none';
+        if (!isWf) document.getElementById('taskWorkflowId').value = '';
+    };
+
+    function clearModal() {
+        document.getElementById('taskId').value              = '0';
+        document.getElementById('taskTitle').value           = '';
+        document.getElementById('taskInstructions').value    = '';
+        document.getElementById('taskWorkflowId').value      = '';
+        document.getElementById('typeInstructions').checked  = true;
+        document.getElementById('instructionsGroup').style.display = '';
+        document.getElementById('workflowGroup').style.display     = 'none';
+        document.getElementById('taskFreqType').value        = '2';
+        document.getElementById('taskFreqValue').value       = '1';
+        document.getElementById('taskFreqValue').style.display = '';
+        document.getElementById('taskScheduledAt').value     = '';
+        document.getElementById('taskScheduledAtGroup').style.display = 'none';
+        document.getElementById('taskDelivery').value        = '0';
+        document.getElementById('taskEmail').value           = '';
+        document.getElementById('taskEmailGroup').style.display = 'none';
+        document.getElementById('taskEnabled').checked       = true;
+        document.getElementById('taskFreqHint').textContent  = 'Runs daily (at 09:00 UTC).';
+        document.getElementById('taskModalError').classList.add('d-none');
+        document.getElementById('taskModalSuccess').classList.add('d-none');
+    }
+
+    window.openAddModal = function () {
+        clearModal();
+        document.getElementById('taskModalLabel').textContent = 'New Scheduled Task';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('taskModal')).show();
+        setTimeout(() => document.getElementById('taskTitle').focus(), 300);
+    };
+
+    window.openEditModal = async function (id) {
+        clearModal();
+        document.getElementById('taskModalLabel').textContent = 'Edit Scheduled Task';
+        document.getElementById('taskSaveBtn').innerHTML =
+            '<span class="spinner-border spinner-border-sm me-1"></span>Loading…';
+
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('taskModal')).show();
+
+        try {
+            const resp = await fetch(`/api/scheduler/task/${id}`);
+            if (!resp.ok) throw new Error('Failed to load task.');
+            const t = await resp.json();
+
+            document.getElementById('taskId').value           = t.id;
+            document.getElementById('taskTitle').value        = t.title;
+            document.getElementById('taskFreqType').value     = String(t.frequencyType);
+            document.getElementById('taskFreqValue').value    = t.frequencyValue;
+            document.getElementById('taskDelivery').value     = String(t.deliveryType);
+            document.getElementById('taskEmail').value        = t.deliveryEmail ?? '';
+            document.getElementById('taskEnabled').checked    = t.isEnabled;
+
+            if (t.workflowDefinitionId) {
+                document.getElementById('typeWorkflow').checked    = true;
+                document.getElementById('instructionsGroup').style.display = 'none';
+                document.getElementById('workflowGroup').style.display     = '';
+                document.getElementById('taskWorkflowId').value   = String(t.workflowDefinitionId);
+            } else {
+                document.getElementById('typeInstructions').checked = true;
+                document.getElementById('instructionsGroup').style.display = '';
+                document.getElementById('workflowGroup').style.display     = 'none';
+                document.getElementById('taskInstructions').value  = t.instructions ?? '';
+            }
+
+            if (t.scheduledAt) {
+                const dt = new Date(t.scheduledAt);
+                const local = new Date(dt - dt.getTimezoneOffset() * 60000)
+                    .toISOString().slice(0, 16);
+                document.getElementById('taskScheduledAt').value = local;
+            }
+
+            onFreqTypeChange();
+            onDeliveryChange();
+        } catch (err) {
+            document.getElementById('taskModalErrorText').textContent = err.message;
+            document.getElementById('taskModalError').classList.remove('d-none');
+        } finally {
+            document.getElementById('taskSaveBtn').innerHTML = '💾 Save Task';
+        }
+    };
+
+    window.confirmDelete = function (id, title) {
+        if (!confirm(`Delete task "${title}"?\n\nThis cannot be undone.`)) return;
+        document.getElementById('deleteId').value = id;
+        document.getElementById('deleteForm').submit();
+    };
+
+    window.runNow = async function (id, btn) {
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        btn.disabled  = true;
+
+        try {
+            const fd  = new FormData();
+            fd.append('__RequestVerificationToken',
+                document.querySelector('input[name="__RequestVerificationToken"]').value);
+            const resp = await fetch(`?handler=RunNow&id=${id}`, { method: 'POST', body: fd });
+            const data = await resp.json();
+            if (data.success) {
+                btn.innerHTML = '✅';
+                btn.title = data.message;
+            } else {
+                btn.innerHTML = '❌';
+                btn.title = data.error;
+            }
+        } catch {
+            btn.innerHTML = '❌';
+        } finally {
+            btn.disabled = false;
+            setTimeout(() => { btn.innerHTML = orig; btn.title = 'Run now'; }, 3000);
+        }
+    };
+
+    // AJAX save
+    document.getElementById('taskForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const btn  = document.getElementById('taskSaveBtn');
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+        btn.disabled  = true;
+
+        document.getElementById('taskModalError').classList.add('d-none');
+        document.getElementById('taskModalSuccess').classList.add('d-none');
+
+        try {
+            const resp = await fetch(this.action, { method: 'POST', body: new FormData(this) });
+            const data = await resp.json();
+
+            if (data.success) {
+                document.getElementById('taskModalSuccessText').textContent =
+                    data.message + (data.nextRun ? ` Next run: ${data.nextRun}.` : '');
+                document.getElementById('taskModalSuccess').classList.remove('d-none');
+                setTimeout(() => location.reload(), 1200);
+            } else {
+                document.getElementById('taskModalErrorText').textContent = data.error ?? 'Save failed.';
+                document.getElementById('taskModalError').classList.remove('d-none');
+            }
+        } catch {
+            document.getElementById('taskModalErrorText').textContent = 'Network error — please try again.';
+            document.getElementById('taskModalError').classList.remove('d-none');
+        } finally {
+            btn.innerHTML = orig;
+            btn.disabled  = false;
+        }
+    });
+
+    // auto-dismiss alerts
+    const a = document.getElementById('schedAlert');
+    if (a) setTimeout(() => bootstrap.Alert.getOrCreateInstance(a).close(), 4000);
+
+})();
+</script>
+}

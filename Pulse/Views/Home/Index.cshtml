@@ -1,0 +1,475 @@
+@using Pulse.Models
+@using System.Text.RegularExpressions
+@using System.Text.Json
+@inject Pulse.Services.LlmSettingsService _appSettings
+@{
+    ViewData["Title"]     = "Dashboard";
+    ViewData["BodyClass"] = "container-fluid px-3 px-lg-4";
+    var _appName    = _appSettings.Get().AppName ?? "Pulse";
+    var alerts      = ViewBag.RecentAlerts as List<ScheduledTaskResult> ?? [];
+    var unreadCount = (int)(ViewBag.UnreadCount ?? 0);
+    var isAuth      = User.Identity?.IsAuthenticated == true;
+
+    var successCount = alerts.Count(a => a.IsSuccess);
+    var failCount    = alerts.Count(a => !a.IsSuccess);
+    var lastRun      = alerts.FirstOrDefault()?.RunAt.ToLocalTime();
+
+    static string StripChartMarkers(string text)
+        => Regex.Replace(text, @"\[CHART_SPEC\][\s\S]*?\[/CHART_SPEC\]", "[chart]",
+                         RegexOptions.Singleline);
+
+    var alertsJson = JsonSerializer.Serialize(alerts.Select(a => new {
+        id        = a.Id,
+        title     = a.TaskTitle,
+        output    = a.Output,
+        isSuccess = a.IsSuccess,
+        isRead    = a.IsRead,
+        runAt     = a.RunAt.ToLocalTime().ToString("MMM d, HH:mm")
+    }));
+}
+
+@section Styles {
+<style>
+/* ── Markdown ──────────────────────────────────────────────────────────────────── */
+.alert-md { font-size: .875rem; line-height: 1.65; color: inherit; }
+.alert-md p { margin: 0 0 .4rem; }
+.alert-md p:last-child { margin-bottom: 0; }
+.alert-md ul, .alert-md ol { padding-left: 1.3rem; margin: .25rem 0 .4rem; }
+.alert-md li { margin-bottom: .1rem; }
+.alert-md h1,.alert-md h2,.alert-md h3,.alert-md h4 { font-size: 1rem; font-weight: 600; margin: .5rem 0 .2rem; }
+.alert-md code { font-size: .82em; background: rgba(0,0,0,.06); padding: .1em .28em; border-radius: .25em; }
+.alert-md pre  { background: rgba(0,0,0,.04); padding: .55rem .75rem; border-radius: .4rem; overflow-x: auto; font-size: .8em; margin: .4rem 0; }
+.alert-md blockquote { border-left: 3px solid #dee2e6; padding-left: .7rem; color: #6b7280; margin: .4rem 0; }
+.alert-md strong { font-weight: 600; }
+.alert-md .table-scroll { overflow-x: auto; margin: .4rem 0 .6rem; }
+.alert-md table  { border-collapse: collapse; width: 100%; font-size: .875em; }
+.alert-md th, .alert-md td { border: 1px solid #dee2e6; padding: .35rem .65rem; text-align: left; white-space: nowrap; }
+.alert-md th { background: rgba(0,0,0,.03); font-weight: 600; }
+.alert-chart-wrap { position: relative; margin: .7rem 0; padding: .85rem 1rem; background: #fff; border: 1px solid #e5e7eb; border-radius: .55rem; }
+/* ── Stat cards ──────────────────────────────────────────────────────────────────── */
+.stat-card { border-radius: .65rem; padding: 1rem 1.25rem; background: #fff; border: 1px solid #e5e7eb; }
+.stat-card .stat-value { font-size: 1.7rem; font-weight: 700; line-height: 1.1; }
+.stat-card .stat-label { font-size: .72rem; color: #6b7280; text-transform: uppercase; letter-spacing: .05em; margin-top: .25rem; }
+/* ── Alerts pane ─────────────────────────────────────────────────────────────────── */
+.alerts-pane-scroll { max-height: calc(100vh - 8rem); overflow-y: auto; }
+.alert-item { cursor: pointer; border: 1px solid #ebebeb; transition: background .1s, border-color .12s; }
+.alert-item:hover    { background: #f8f9fa; border-color: #d1d5db; }
+.alert-item.selected { background: #eff6ff; border-color: #2563eb !important; border-left: 3px solid #2563eb; }
+/* ── Dark mode ───────────────────────────────────────────────────────────────────── */
+html[data-theme="dark"] .stat-card           { background: #1a1a1a; border-color: #262626; }
+html[data-theme="dark"] .alert-item          { border-color: #222; }
+html[data-theme="dark"] .alert-item:hover    { background: #1e1e1e; border-color: #333; }
+html[data-theme="dark"] .alert-item.selected { background: #1e2d3d; border-color: #3b82f6 !important; }
+html[data-theme="dark"] .alert-md code       { background: rgba(255,255,255,.1); color: #93c5fd; }
+html[data-theme="dark"] .alert-md pre        { background: rgba(255,255,255,.06); }
+html[data-theme="dark"] .alert-md blockquote { border-color: #444; color: #9ca3af; }
+html[data-theme="dark"] .alert-md th         { background: rgba(255,255,255,.05); }
+html[data-theme="dark"] .alert-md th,
+html[data-theme="dark"] .alert-md td         { border-color: #2e2e2e; }
+html[data-theme="dark"] .alert-chart-wrap    { background: #1c1c1c; border-color: #2a2a2a; }
+</style>
+}
+
+@* Embedded alert payload for JS *@
+<script id="alertsPayload" type="application/json">@Html.Raw(alertsJson)</script>
+
+<div class="row g-3 g-lg-4 pt-2">
+
+    @* ??????????????????????????????????????????????????????????????????
+       PANE 1 � DASHBOARD (larger)
+    ?????????????????????????????????????????????????????????????????? *@
+    <div class="col-lg-8">
+
+        @* Header *@
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <h5 class="fw-bold mb-0">📊 Dashboard</h5>
+            @if (isAuth)
+            {
+                <a asp-controller="Agent" asp-action="Chat"
+                   class="btn btn-primary btn-sm d-flex align-items-center gap-1">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+                        <path d="M12 2l1.8 5.5L19 9l-5.2 1.5L12 16l-1.8-5.5L5 9l5.2-1.5L12 2z"/>
+                        <path d="M19 16l.9 2.8 2.1.7-2.1.7L19 23l-.9-2.8-2.1-.7 2.1-.7L19 16z" opacity=".6"/>
+                    </svg>
+                    Open AI Agent
+                </a>
+            }
+        </div>
+
+        @* Overview (default) *@
+        <div id="dashOverview">
+            @if (!isAuth)
+            {
+                <div class="card shadow-sm rounded-3">
+                    <div class="card-body text-center py-5">
+                        <div style="font-size:3rem">👋</div>
+                        <h4 class="mt-3">Welcome to @_appName</h4>
+                        <p class="text-muted">Sign in to access the AI Agent, Scheduler, and your personal dashboard.</p>
+                        <a asp-area="Identity" asp-page="/Account/Login" class="btn btn-primary">Sign In</a>
+                    </div>
+                </div>
+            }
+            else if (!alerts.Any())
+            {
+                <div class="card shadow-sm rounded-3">
+                    <div class="card-body text-center py-5 text-muted">
+                        <div style="font-size:3rem">📬</div>
+                        <p class="mt-3 mb-1 fw-semibold">No scheduled results yet.</p>
+                        <p class="small">Create a scheduled task to see results here automatically.</p>
+                        <div class="d-flex gap-2 justify-content-center mt-3">
+                            <a asp-page="/Scheduler" class="btn btn-primary btn-sm">📅 Go to Scheduler</a>
+                            <a asp-controller="Agent" asp-action="Chat" class="btn btn-outline-secondary btn-sm">🤖 Open AI Agent</a>
+                        </div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="row g-3 mb-4">
+                    <div class="col-6 col-md-3">
+                        <div class="stat-card shadow-sm">
+                            <div class="stat-value">@alerts.Count</div>
+                            <div class="stat-label">Total Runs</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="stat-card shadow-sm">
+                            <div class="stat-value text-success">@successCount</div>
+                            <div class="stat-label">✅ Succeeded</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="stat-card shadow-sm">
+                            <div class="stat-value @(failCount > 0 ? "text-danger" : "")">@failCount</div>
+                            <div class="stat-label">❌ Failed</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="stat-card shadow-sm">
+                            <div class="stat-value text-primary">@unreadCount</div>
+                            <div class="stat-label">🔔 Unread</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="text-center text-muted py-4" id="dashSelectHint">
+                    <div style="font-size:2.2rem;opacity:.3">👆</div>
+                    <p class="small mt-2 mb-0">Select an alert on the right to view its full output here.</p>
+                    @if (lastRun.HasValue)
+                    {
+                        <p class="small text-muted mt-1 mb-0">Last run: @lastRun.Value.ToString("MMM d, HH:mm")</p>
+                    }
+                </div>
+            }
+        </div>
+
+        @* Detail view (shown when alert selected) *@
+        <div id="dashDetail" style="display:none">
+            <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="showOverview()">← Back</button>
+                <span id="detailIcon" style="font-size:.95rem"></span>
+                <span id="detailTitle" class="fw-bold text-truncate flex-grow-1"></span>
+                <span id="detailBadge"></span>
+                <span id="detailTime" class="text-muted small flex-shrink-0"></span>
+            </div>
+            <div class="card shadow-sm rounded-3" style="min-height:200px">
+                <div class="card-body">
+                    <div id="detailContent"></div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    @* ??????????????????????????????????????????????????????????????????
+       PANE 2 � ALERTS (smaller, sticky)
+    ?????????????????????????????????????????????????????????????????? *@
+    <div class="col-lg-4">
+        <div class="position-sticky" style="top:1rem">
+
+            @* Header *@
+            <div class="d-flex align-items-center justify-content-between mb-3">
+                <h5 class="fw-bold mb-0">
+                    🔔 Alerts
+                    @if (unreadCount > 0)
+                    {
+                        <span class="badge bg-danger ms-1" style="font-size:.6rem;vertical-align:middle">@unreadCount</span>
+                    }
+                </h5>
+                @if (isAuth && alerts.Any())
+                {
+                    <div class="d-flex gap-1">
+                        @if (unreadCount > 0)
+                        {
+                            <button class="btn btn-sm btn-outline-secondary" id="markAllReadBtn">✓ All read</button>
+                        }
+                        <button class="btn btn-sm btn-outline-danger" id="deleteAllAlertsBtn" title="Delete all alerts">🗑 All</button>
+                    </div>
+                }
+            </div>
+
+            @* Alert list *@
+            <div class="alerts-pane-scroll pe-1">
+                @if (!isAuth)
+                {
+                    <p class="text-muted small text-center py-3">Sign in to see alerts.</p>
+                }
+                else if (!alerts.Any())
+                {
+                    <div class="text-muted small text-center py-4">
+                        <div style="font-size:2rem">📬</div>
+                        <p class="mt-2 mb-0">No alerts yet.</p>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var alert in alerts)
+                    {
+                        var snippet = StripChartMarkers(alert.Output);
+                        snippet = snippet.Length > 75 ? snippet[..72] + "…" : snippet;
+
+                        <div class="alert-item rounded-3 px-3 py-2 mb-2"
+                             data-id="@alert.Id"
+                             data-read="@alert.IsRead.ToString().ToLower()"
+                             onclick="selectAlert(@alert.Id, this)">
+                            <div class="d-flex align-items-start gap-2">
+                                <span class="flex-shrink-0" style="font-size:.9rem;line-height:1.5">
+                                    @(alert.IsSuccess ? "✅" : "❌")
+                                </span>
+                                <div class="flex-grow-1 overflow-hidden">
+                                    <div class="d-flex align-items-center gap-1">
+                                        <span class="fw-semibold text-truncate" style="font-size:.82rem">@alert.TaskTitle</span>
+                                        @if (!alert.IsRead)
+                                        {
+                                            <span class="badge bg-primary flex-shrink-0" style="font-size:.55rem;padding:.2em .42em">NEW</span>
+                                        }
+                                    </div>
+                                    <div class="text-muted" style="font-size:.72rem">
+                                        @alert.RunAt.ToLocalTime().ToString("MMM d, HH:mm")
+                                    </div>
+                                    <div class="text-truncate text-muted" style="font-size:.74rem;opacity:.75">
+                                        @snippet
+                                    </div>
+                                </div>
+                                <button type="button"
+                                        class="btn-close flex-shrink-0 delete-alert-btn"
+                                        style="font-size:.55rem;opacity:.4;margin-top:.15rem"
+                                        title="Delete alert"
+                                        data-id="@alert.Id"
+                                        onclick="deleteAlert(event, @alert.Id)"></button>
+                            </div>
+                        </div>
+                    }
+
+                    <p class="text-muted text-end mb-0" style="font-size:.7rem">
+                        @alerts.Count result(s) · @(lastRun?.ToString("MMM d, HH:mm") ?? "—")
+                    </p>
+                }
+            </div>
+
+        </div>
+    </div>
+
+</div>
+
+@section Scripts {
+<script src="https://cdn.jsdelivr.net/npm/marked@latest/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@latest/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    'use strict';
+
+    const PAYLOAD   = JSON.parse(document.getElementById('alertsPayload')?.textContent || '[]');
+    const ALERT_MAP = Object.fromEntries(PAYLOAD.map(a => [String(a.id), a]));
+
+    const COLORS    = ['#2563eb','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#84cc16'];
+    const MARKER_RE = /\[CHART_SPEC\]([\s\S]*?)\[\/CHART_SPEC\]/g;
+
+    // ── Content renderer ───────────────────────────────────────────────────────────────
+    function renderContent(container, rawText) {
+        container.querySelectorAll('canvas').forEach(c => Chart.getChart(c)?.destroy());
+        container.innerHTML = '';
+        if (!rawText?.trim()) return;
+
+        const parts = [];
+        let lastIdx = 0;
+        MARKER_RE.lastIndex = 0;
+        let m;
+        while ((m = MARKER_RE.exec(rawText)) !== null) {
+            if (m.index > lastIdx)
+                parts.push({ kind: 'md',    src: rawText.slice(lastIdx, m.index) });
+            parts.push(    { kind: 'chart', src: m[1] });
+            lastIdx = m.index + m[0].length;
+        }
+        if (lastIdx < rawText.length)
+            parts.push({ kind: 'md', src: rawText.slice(lastIdx) });
+
+        parts.forEach(part => {
+            if (part.kind === 'md') {
+                const txt = part.src.trim();
+                if (!txt) return;
+                const wrap = document.createElement('div');
+                wrap.className = 'alert-md';
+                wrap.innerHTML = marked.parse(txt, { breaks: false, gfm: true });
+                wrap.querySelectorAll('table').forEach(tbl => {
+                    const scroll = document.createElement('div');
+                    scroll.className = 'table-scroll';
+                    tbl.replaceWith(scroll);
+                    scroll.appendChild(tbl);
+                });
+                container.appendChild(wrap);
+            } else {
+                try { renderChart(container, JSON.parse(part.src)); } catch { /* skip */ }
+            }
+        });
+    }
+
+    function renderChart(container, spec) {
+        const isDark  = document.documentElement.getAttribute('data-theme') === 'dark';
+        const textCol = isDark ? '#9ca3af' : '#6b7280';
+        const gridCol = isDark ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.07)';
+        const isPolar = spec.type === 'pie' || spec.type === 'doughnut';
+
+        const wrap = document.createElement('div');
+        wrap.className = 'alert-chart-wrap';
+        const canvas = document.createElement('canvas');
+        wrap.appendChild(canvas);
+        container.appendChild(wrap);
+
+        const datasets = (spec.datasets || []).map((ds, i) => ({
+            label:           ds.label,
+            data:            ds.data,
+            backgroundColor: isPolar
+                ? COLORS.slice(0, (ds.data || []).length)
+                : (ds.color ?? (spec.type === 'line' ? COLORS[i % COLORS.length] + '30' : COLORS[i % COLORS.length])),
+            borderColor: isPolar ? COLORS.slice(0, (ds.data || []).length) : (ds.color ?? COLORS[i % COLORS.length]),
+            borderWidth: isPolar ? 1 : 2,
+            fill:        ds.fill ?? false,
+            tension:     0.35,
+            pointRadius: spec.type === 'line' ? 3 : undefined,
+        }));
+
+        new Chart(canvas, {
+            type: spec.type,
+            data: { labels: spec.labels, datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    title:  { display: !!spec.title, text: spec.title, font: { size: 13, weight: '600' }, color: textCol, padding: { bottom: 8 } },
+                    legend: { position: 'top', labels: { color: textCol, boxWidth: 12, font: { size: 11 } } },
+                },
+                scales: isPolar ? {} : {
+                    x: { ticks: { color: textCol }, grid: { color: gridCol }, stacked: spec.stacked ?? false },
+                    y: { ticks: { color: textCol }, grid: { color: gridCol }, stacked: spec.stacked ?? false, beginAtZero: true },
+                },
+            },
+        });
+    }
+
+    // ── Master-detail ───────────────────────────────────────────────────────────────
+    window.selectAlert = function (id, el) {
+        const key  = String(id);
+        const data = ALERT_MAP[key];
+        if (!data) return;
+
+        document.querySelectorAll('.alert-item').forEach(i => i.classList.remove('selected'));
+        (el || document.querySelector(`.alert-item[data-id="${key}"]`))?.classList.add('selected');
+
+        document.getElementById('detailIcon').textContent  = data.isSuccess ? '✅' : '❌';
+        document.getElementById('detailTitle').textContent = data.title;
+        document.getElementById('detailTime').textContent  = data.runAt;
+        document.getElementById('detailBadge').innerHTML   =
+            !data.isRead ? '<span class="badge bg-primary" style="font-size:.6rem">NEW</span>' : '';
+
+        renderContent(document.getElementById('detailContent'), data.output);
+
+        document.getElementById('dashOverview').style.display = 'none';
+        document.getElementById('dashDetail').style.display   = 'block';
+
+        if (!data.isRead) {
+            data.isRead = true;
+            fetch(`/api/scheduler/mark-read/${id}`, { method: 'POST' }).catch(() => {});
+            const item = document.querySelector(`.alert-item[data-id="${key}"]`);
+            if (item) {
+                item.dataset.read = 'true';
+                item.querySelector('.badge.bg-primary')?.remove();
+            }
+            document.getElementById('detailBadge').innerHTML = '';
+            updateUnreadBadge(-1);
+        }
+    };
+
+    window.showOverview = function () {
+        document.querySelectorAll('.alert-item').forEach(i => i.classList.remove('selected'));
+        document.getElementById('detailContent').querySelectorAll('canvas')
+            .forEach(c => Chart.getChart(c)?.destroy());
+        document.getElementById('detailContent').innerHTML = '';
+        document.getElementById('dashDetail').style.display   = 'none';
+        document.getElementById('dashOverview').style.display = 'block';
+    };
+
+    // ── Mark all read ────────────────────────────────────────────────────────────
+    document.getElementById('markAllReadBtn')?.addEventListener('click', async function () {
+        try {
+            await fetch('/api/scheduler/mark-all-read', { method: 'POST' });
+            document.querySelectorAll('.alert-item').forEach(r => {
+                r.dataset.read = 'true';
+                r.querySelector('.badge.bg-primary')?.remove();
+            });
+            PAYLOAD.forEach(a => a.isRead = true);
+            updateUnreadBadge(0, true);
+            this.remove();
+        } catch { /* silent */ }
+    });
+
+    // ── Delete single alert ──────────────────────────────────────────────────────
+    window.deleteAlert = async function (event, id) {
+        event.stopPropagation();
+        try {
+            const resp = await fetch(`/api/scheduler/delete-result/${id}`, { method: 'DELETE' });
+            if (!resp.ok) return;
+            const item = document.querySelector(`.alert-item[data-id="${id}"]`);
+            const wasUnread = item?.dataset.read === 'false';
+            item?.remove();
+            const idx = PAYLOAD.findIndex(a => a.id === id);
+            if (idx !== -1) PAYLOAD.splice(idx, 1);
+            delete ALERT_MAP[String(id)];
+            if (wasUnread) updateUnreadBadge(-1);
+            // If the deleted item was being viewed, return to overview
+            if (document.getElementById('dashDetail').style.display !== 'none') {
+                const stillSelected = document.querySelector('.alert-item.selected');
+                if (!stillSelected) showOverview();
+            }
+        } catch { /* silent */ }
+    };
+
+    // ── Delete all alerts ────────────────────────────────────────────────────────
+    document.getElementById('deleteAllAlertsBtn')?.addEventListener('click', async function () {
+        if (!confirm('Delete all alerts? This cannot be undone.')) return;
+        try {
+            const resp = await fetch('/api/scheduler/delete-all-results', { method: 'DELETE' });
+            if (!resp.ok) return;
+            document.querySelectorAll('.alert-item').forEach(r => r.remove());
+            PAYLOAD.length = 0;
+            Object.keys(ALERT_MAP).forEach(k => delete ALERT_MAP[k]);
+            updateUnreadBadge(0, true);
+            showOverview();
+            this.remove();
+            document.getElementById('markAllReadBtn')?.remove();
+        } catch { /* silent */ }
+    });
+
+    function updateUnreadBadge(delta, resetToZero = false) {
+        const badge   = document.querySelector('.badge.bg-danger');
+        const markBtn = document.getElementById('markAllReadBtn');
+        let current   = parseInt(badge?.textContent) || 0;
+        const newCount = resetToZero ? 0 : Math.max(0, current + delta);
+        if (badge)   { if (newCount === 0) badge.remove(); else badge.textContent = newCount; }
+        if (markBtn) { if (newCount === 0) markBtn.remove(); }
+    }
+
+})();
+</script>
+}

@@ -1,0 +1,513 @@
+@page
+@model WorkflowsModel
+@using Pulse.Models
+@{
+    ViewData["Title"] = "Workflows";
+    var successMsg = TempData["WorkflowSuccess"] as string;
+}
+@section Styles {
+<style>
+    .step-badge { font-size:.68rem; text-transform:uppercase; letter-spacing:.05em; }
+    .step-row { background:#f8f9fa; border:1px solid #e9ecef; border-radius:.5rem; padding:.65rem .85rem; margin-bottom:.5rem; }
+    .wf-goal-cell { max-width:320px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:.82rem; color:#6c757d; }
+    .run-status-completed { color:#198754; } .run-status-stopped { color:#f59e0b; }
+    .run-status-failed    { color:#dc3545; } .run-status-running  { color:#0d6efd; }
+    .decision-continue { color:#198754; font-weight:600; } .decision-stop { color:#dc3545; font-weight:600; }
+</style>
+}
+
+<div class="d-flex align-items-center gap-3 mb-4">
+    <h2 class="mb-0 fw-bold">&#128279; Workflows</h2>
+    <div class="text-muted small flex-grow-1">Chain steps with context passing and agent decision gates.</div>
+    <button type="button" class="btn btn-primary btn-sm" onclick="openAddModal()">&#10133; New Workflow</button>
+</div>
+
+@if (successMsg != null)
+{
+    <div id="wfAlert" class="alert alert-success alert-dismissible d-flex align-items-center gap-2 mb-4">
+        &#9989; <span>@successMsg</span>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+@if (!Model.Workflows.Any())
+{
+    <div class="card shadow-sm mb-4">
+        <div class="card-body text-center py-5 text-muted">
+            <div style="font-size:3rem">&#128279;</div>
+            <p class="mt-3 mb-1 fw-semibold">No workflows yet.</p>
+            <p class="small">Create a workflow to chain agent tasks with context passing and decision gates.</p>
+            <button type="button" class="btn btn-primary btn-sm mt-2" onclick="openAddModal()">&#10133; Create your first workflow</button>
+        </div>
+    </div>
+}
+else
+{
+    <div class="card shadow-sm mb-4">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">Title</th>
+                        <th>Goal</th>
+                        <th>Steps</th>
+                        <th class="text-end pe-3">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var wf in Model.Workflows)
+                    {
+                        <tr>
+                            <td class="ps-3 fw-semibold">
+                                @if (!wf.IsEnabled) { <span class="badge bg-secondary me-1" style="font-size:.65rem">Paused</span> }
+                                @wf.Title
+                            </td>
+                            <td><span class="wf-goal-cell d-block" title="@wf.GoalDescription">@wf.GoalDescription</span></td>
+                            <td>
+                                @foreach (var s in wf.Steps)
+                                {
+                                    var cls = s.StepType == StepType.Decision
+                                        ? "bg-warning-subtle text-warning border border-warning-subtle"
+                                        : s.StepType == StepType.Webhook
+                                            ? "bg-success-subtle text-success border border-success-subtle"
+                                            : s.StepType == StepType.CallWorkflow
+                                                ? "bg-info-subtle text-info border border-info-subtle"
+                                                : "bg-primary-subtle text-primary border border-primary-subtle";
+                                    var label = s.StepType switch { StepType.Decision => "Gate", StepType.Webhook => s.WebhookPlatform ?? "Hook", StepType.CallWorkflow => "Chain", _ => "Run" };
+                                    <span class="badge me-1 @cls step-badge">@s.Order. @label @s.Name</span>
+                                }
+                            </td>
+                            <td class="text-end pe-3">
+                                <div class="btn-group btn-group-sm">
+                                    <button type="button" class="btn btn-outline-info" onclick="runNow(@wf.Id, this)">&#9654; Run</button>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="openEditModal(@wf.Id)">&#9998;</button>
+                                    <form method="post" asp-page-handler="Toggle" class="d-inline">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@wf.Id" />
+                                        <button type="submit" class="btn @(wf.IsEnabled ? "btn-outline-warning" : "btn-outline-success")">
+                                            @Html.Raw(wf.IsEnabled ? "?" : "?")
+                                        </button>
+                                    </form>
+                                    <button type="button" class="btn btn-outline-danger"
+                                            onclick="confirmDelete(@wf.Id, '@Html.Raw(wf.Title.Replace("'","\\\'"))')">&#128465;</button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+<h5 class="fw-semibold mb-3 d-flex align-items-center gap-2">
+    &#128203; Recent Runs
+    @if (Model.RecentRuns.Any())
+    {
+        <button type="button" class="btn btn-outline-danger btn-sm ms-auto"
+                onclick="deleteAllRuns()" style="font-size:.75rem">
+            &#128465; Delete All
+        </button>
+    }
+</h5>
+@if (!Model.RecentRuns.Any())
+{
+    <div class="text-muted small">No runs yet. Click <strong>&#9654; Run</strong> on any workflow to start.</div>
+}
+else
+{
+    <div class="card shadow-sm">
+        <div class="list-group list-group-flush">
+            @foreach (var run in Model.RecentRuns)
+            {
+                var statusIcon = run.Status switch { "completed"=>"?","stopped"=>"??","failed"=>"?","running"=>"?",_=>"?" };
+                var statusCls  = run.Status switch { "completed"=>"run-status-completed","stopped"=>"run-status-stopped","failed"=>"run-status-failed","running"=>"run-status-running",_=>"text-muted" };
+                <div class="list-group-item px-3 py-2" id="run-row-@run.Id">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="@statusCls fw-semibold" style="font-size:.85rem">@statusIcon @run.WorkflowTitle</span>
+                        <span class="badge bg-secondary-subtle text-secondary border" style="font-size:.65rem">@run.StepRuns.Count step(s)</span>
+                        <span class="text-muted small ms-auto">
+                            @run.StartedAt.ToLocalTime().ToString("MMM d, HH:mm")
+                            @if (run.FinishedAt.HasValue)
+                            {
+                                var dur = run.FinishedAt.Value - run.StartedAt;
+                                <text> &middot; @((int)dur.TotalSeconds)s</text>
+                            }
+                        </span>
+                        <button class="btn btn-link btn-sm p-0" onclick="showRunDetails(@run.Id)">Details</button>
+                        <button class="btn btn-link btn-sm p-0 text-danger" onclick="deleteRun(@run.Id, this)" title="Delete run">&#128465;</button>
+                    </div>
+                    @if (!string.IsNullOrEmpty(run.StopReason))
+                    {
+                        <div class="text-muted small mt-1">@run.StopReason</div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<form id="deleteForm" method="post" asp-page-handler="Delete">
+    @Html.AntiForgeryToken()
+    <input type="hidden" id="deleteId" name="id" />
+</form>
+
+<div class="modal fade" id="wfModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="wfModalLabel">New Workflow</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="wfModalError"   class="alert alert-danger  py-2 px-3 mb-3 d-none"></div>
+                <div id="wfModalSuccess" class="alert alert-success py-2 px-3 mb-3 d-none"></div>
+                <input type="hidden" id="wfId" value="0" />
+                <div class="row g-3 mb-3">
+                    <div class="col-md-5">
+                        <label class="form-label fw-semibold">Title <span class="text-danger">*</span></label>
+                        <input id="wfTitle" class="form-control" placeholder="e.g. Monthly Sales Pipeline" maxlength="200" />
+                    </div>
+                    <div class="col-md-7">
+                        <label class="form-label fw-semibold">End Goal <span class="text-danger">*</span></label>
+                        <input id="wfGoal" class="form-control" placeholder="e.g. Produce and email a full sales report with anomaly detection" />
+                        <div class="form-text">The agent sees this goal at every step to stay on track.</div>
+                    </div>
+                </div>
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" role="switch" id="wfEnabled" checked />
+                    <label class="form-check-label" for="wfEnabled">Enabled</label>
+                </div>
+                <hr class="my-3" />
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="fw-semibold" style="font-size:.9rem">Steps</span>
+                    <span class="text-muted small flex-grow-1">Each step output is passed as context to all following steps.</span>
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="addStep('execute')">&#10133; Execute step</button>
+                    <button type="button" class="btn btn-sm btn-outline-warning" onclick="addStep('decision')" title="Agent decides [CONTINUE] or [STOP]">&#9878; Decision gate</button>
+                    <button type="button" class="btn btn-sm btn-outline-success" onclick="addStep('webhook')" title="Call n8n, Zapier, Make.com or any webhook">&#128279; Webhook</button>
+                    <button type="button" class="btn btn-sm btn-outline-info" onclick="addStep('callworkflow')" title="Call another workflow and chain its output">&#9939; Call Workflow</button>
+                </div>
+                <div id="stepsContainer"></div>
+                <div id="noStepsHint" class="text-muted small text-center py-3">Add at least one step using the buttons above.</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="wfSaveBtn" class="btn btn-primary" onclick="saveWorkflow()">&#128190; Save Workflow</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="runModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="runModalLabel">Run Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="runModalBody">
+                <div class="text-center py-4"><span class="spinner-border spinner-border-sm me-2"></span>Loading�</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+@Html.AntiForgeryToken()
+<script>
+(function () {
+    'use strict';
+    let stepCounter = 0;
+
+    function esc(s) {
+        return (s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
+    window.addStep = function (type, name, instructions, webhookUrl, webhookPlatform, calledWorkflowId) {
+        stepCounter++;
+        const isDecision     = type === 'decision';
+        const isWebhook      = type === 'webhook';
+        const isCallWorkflow = type === 'callworkflow';
+        const container      = document.getElementById('stepsContainer');
+        document.getElementById('noStepsHint').style.display = 'none';
+
+        let badgeCls, badgeLabel, placeholder, stepTypeValue;
+        if (isDecision) {
+            badgeCls      = 'bg-warning-subtle text-warning border border-warning-subtle';
+            badgeLabel    = '&#9878; Decision Gate';
+            placeholder   = 'What to evaluate. Agent will output [CONTINUE] or [STOP].';
+            stepTypeValue = 1;
+        } else if (isWebhook) {
+            badgeCls      = 'bg-success-subtle text-success border border-success-subtle';
+            badgeLabel    = '&#128279; Webhook';
+            placeholder   = 'Optional notes about what this webhook does.';
+            stepTypeValue = 2;
+        } else if (isCallWorkflow) {
+            badgeCls      = 'bg-info-subtle text-info border border-info-subtle';
+            badgeLabel    = '&#9939; Call Workflow';
+            placeholder   = 'Optional notes about why this sub-workflow is called.';
+            stepTypeValue = 3;
+        } else {
+            badgeCls      = 'bg-primary-subtle text-primary border border-primary-subtle';
+            badgeLabel    = '&#9654; Execute';
+            placeholder   = 'What the agent should do. Output feeds the next step.';
+            stepTypeValue = 0;
+        }
+
+        const platform     = isWebhook ? (webhookPlatform ?? 'n8n') : 'n8n';
+        const platformList = ['n8n', 'Zapier', 'Make.com', 'Custom'];
+        const platformOpts = platformList
+            .map(p => '<option value="' + p + '"' + (p === platform ? ' selected' : '') + '>' + p + '</option>')
+            .join('');
+
+        const webhookField = isWebhook
+            ? '<div class="d-flex gap-2 mt-2 align-items-center">'
+                + '<select class="form-select form-select-sm step-webhook-platform" style="max-width:130px" onchange="updateWebhookHint(this)">'
+                + platformOpts + '</select>'
+                + '<input class="form-control form-control-sm step-webhook-url flex-grow-1"'
+                + ' placeholder="' + getWebhookPlaceholder(platform) + '"'
+                + ' value="' + esc(webhookUrl ?? '') + '" />'
+                + '</div>'
+                + '<div class="step-webhook-hint form-text mt-1">' + getWebhookHint(platform) + '</div>'
+            : '';
+
+        const wfOpts = (_wfList ?? [])
+            .map(w => '<option value="' + w.id + '"' + (w.id === calledWorkflowId ? ' selected' : '') + '>' + esc(w.title) + '</option>')
+            .join('');
+        const callWfField = isCallWorkflow
+            ? '<select class="form-select form-select-sm step-called-workflow mt-2">'
+                + '<option value="">&#9939; Select a workflow to call…</option>'
+                + wfOpts + '</select>'
+                + '<div class="form-text mt-1">&#9939; Runs as a sub-workflow. Its full output feeds the next step. Max chain depth: 5.</div>'
+            : '';
+
+        const div = document.createElement('div');
+        div.className = 'step-row d-flex gap-2 align-items-start';
+        div.innerHTML =
+            '<div class="flex-grow-1">'
+            + '<div class="d-flex align-items-center gap-2 mb-2">'
+            + '<span class="badge step-badge ' + badgeCls + '">' + badgeLabel + '</span>'
+            + '<input class="form-control form-control-sm step-name" placeholder="Step name *" value="' + esc(name ?? '') + '" style="max-width:260px" />'
+            + '<input type="hidden" class="step-type" value="' + stepTypeValue + '" />'
+            + '</div>'
+            + '<textarea class="form-control form-control-sm step-instructions" rows="3" placeholder="' + placeholder + '">' + esc(instructions ?? '') + '</textarea>'
+            + webhookField
+            + callWfField
+            + '</div>'
+            + '<button type="button" class="btn btn-sm btn-outline-danger" style="width:32px;height:32px;padding:0;margin-top:2px"'
+            + ' onclick="this.closest(\'.step-row\').remove(); if(!document.querySelector(\'.step-row\')) document.getElementById(\'noStepsHint\').style.display=\'\'"'
+            + ' title="Remove">&#x2715;</button>';
+        container.appendChild(div);
+    };
+
+    function getWebhookPlaceholder(p) {
+        if (p === 'Zapier')   return 'https://hooks.zapier.com/hooks/catch/12345/abcdef/';
+        if (p === 'Make.com') return 'https://hook.eu1.make.com/abcdefghijklmnop';
+        if (p === 'Custom')   return 'https://your-service.com/webhook/trigger';
+        return 'http://localhost:5678/webhook/abc123';
+    }
+
+    function getWebhookHint(p) {
+        if (p === 'Zapier')   return '&#9889; Zapier &rarr; <em>Webhooks by Zapier &rarr; Catch Hook</em>. Use <strong>Catch Hook and Respond</strong> (paid) to return output to Pulse.';
+        if (p === 'Make.com') return '&#128260; Make.com &rarr; <em>Webhooks &rarr; Custom webhook</em>. Add a <strong>Webhook Response</strong> module to return output.';
+        if (p === 'Custom')   return '&#127760; Any HTTP service. Return <code>{ &quot;output&quot;: &quot;your result&quot; }</code> to pass data to the next step.';
+        return '&#128279; n8n &rarr; <em>Webhook Trigger</em> node. Add a <strong>Respond to Webhook</strong> node returning <code>{ &quot;output&quot;: &quot;...&quot; }</code>.';
+    }
+
+    window.updateWebhookHint = function (select) {
+        const row  = select.closest('.step-row');
+        const inp  = row.querySelector('.step-webhook-url');
+        const hint = row.querySelector('.step-webhook-hint');
+        if (inp)  inp.placeholder = getWebhookPlaceholder(select.value);
+        if (hint) hint.innerHTML  = getWebhookHint(select.value);
+    };
+
+    let _wfList = [];
+    async function loadWorkflowList(excludeId) {
+        try {
+            const r   = await fetch('?handler=WorkflowList');
+            const all = await r.json();
+            _wfList   = all.filter(w => w.id !== excludeId);
+        } catch { _wfList = []; }
+    }
+
+    function collectSteps() {
+        return [...document.querySelectorAll('.step-row')].map(r => ({
+            name:             r.querySelector('.step-name').value,
+            instructions:     r.querySelector('.step-instructions').value,
+            stepType:         parseInt(r.querySelector('.step-type').value),
+            webhookUrl:       r.querySelector('.step-webhook-url')?.value ?? null,
+            webhookPlatform:  r.querySelector('.step-webhook-platform')?.value ?? null,
+            calledWorkflowId: r.querySelector('.step-called-workflow')
+                ? (parseInt(r.querySelector('.step-called-workflow').value) || null)
+                : null,
+        }));
+    }
+    function clearModal() {
+        document.getElementById('wfId').value = '0';
+        document.getElementById('wfTitle').value = '';
+        document.getElementById('wfGoal').value = '';
+        document.getElementById('wfEnabled').checked = true;
+        document.getElementById('stepsContainer').innerHTML = '';
+        document.getElementById('noStepsHint').style.display = '';
+        document.getElementById('wfModalError').classList.add('d-none');
+        document.getElementById('wfModalSuccess').classList.add('d-none');
+        stepCounter = 0;
+    }
+
+    window.openAddModal = async function () {
+        clearModal();
+        await loadWorkflowList(0);
+        document.getElementById('wfModalLabel').textContent = 'New Workflow';
+        document.getElementById('wfSaveBtn').textContent = 'Save Workflow';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('wfModal')).show();
+        setTimeout(() => document.getElementById('wfTitle').focus(), 300);
+    };
+
+    window.openEditModal = async function (id) {
+        clearModal();
+        document.getElementById('wfModalLabel').textContent = 'Edit Workflow';
+        document.getElementById('wfSaveBtn').innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Loading�';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('wfModal')).show();
+        try {
+            const r = await fetch(`?handler=Workflow&id=${id}`);
+            const wf = await r.json();
+            document.getElementById('wfId').value       = wf.id;
+            document.getElementById('wfTitle').value    = wf.title;
+            document.getElementById('wfGoal').value     = wf.goalDescription;
+            document.getElementById('wfEnabled').checked = wf.isEnabled;
+            await loadWorkflowList(wf.id);
+            for (const s of wf.steps) {
+                const type = s.stepType === 1 ? 'decision'
+                           : s.stepType === 2 ? 'webhook'
+                           : s.stepType === 3 ? 'callworkflow'
+                           : 'execute';
+                addStep(type, s.name, s.instructions, s.webhookUrl, s.webhookPlatform, s.calledWorkflowId);
+            }
+        } catch (e) {
+            document.getElementById('wfModalError').textContent = 'Failed to load workflow.';
+            document.getElementById('wfModalError').classList.remove('d-none');
+        } finally {
+            document.getElementById('wfSaveBtn').textContent = 'Save Workflow';
+        }
+    };
+
+    window.saveWorkflow = async function () {
+        const btn = document.getElementById('wfSaveBtn');
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving�';
+        btn.disabled = true;
+        document.getElementById('wfModalError').classList.add('d-none');
+        document.getElementById('wfModalSuccess').classList.add('d-none');
+        const fd = new FormData();
+        fd.append('__RequestVerificationToken', document.querySelector('[name="__RequestVerificationToken"]')?.value ?? '');
+        fd.append('Input.Id',              document.getElementById('wfId').value);
+        fd.append('Input.Title',           document.getElementById('wfTitle').value);
+        fd.append('Input.GoalDescription', document.getElementById('wfGoal').value);
+        fd.append('Input.IsEnabled',       document.getElementById('wfEnabled').checked ? 'true' : 'false');
+        fd.append('Input.StepsJson',       JSON.stringify(collectSteps()));
+        try {
+            const r = await fetch('?handler=Save', { method: 'POST', body: fd });
+            const d = await r.json();
+            if (d.success) { document.getElementById('wfModalSuccess').textContent = d.message; document.getElementById('wfModalSuccess').classList.remove('d-none'); setTimeout(() => location.reload(), 1000); }
+            else           { document.getElementById('wfModalError').textContent = d.error ?? 'Save failed.'; document.getElementById('wfModalError').classList.remove('d-none'); }
+        } catch { document.getElementById('wfModalError').textContent = 'Network error.'; document.getElementById('wfModalError').classList.remove('d-none'); }
+        finally { btn.innerHTML = orig; btn.disabled = false; }
+    };
+
+    window.confirmDelete = function (id, title) {
+        if (!confirm(`Delete workflow "${title}"?\nAll run history will also be removed.`)) return;
+        document.getElementById('deleteId').value = id;
+        document.getElementById('deleteForm').submit();
+    };
+
+    window.runNow = async function (id, btn) {
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        btn.disabled = true;
+        try {
+            const fd = new FormData();
+            fd.append('__RequestVerificationToken', document.querySelector('[name="__RequestVerificationToken"]')?.value ?? '');
+            const r = await fetch(`?handler=RunNow&id=${id}`, { method: 'POST', body: fd });
+            const d = await r.json();
+            btn.innerHTML = d.success ? '&#9989;' : '&#10060;';
+            btn.title = d.success ? d.message : d.error;
+            if (d.success) setTimeout(() => location.reload(), 2500);
+        } catch { btn.innerHTML = '&#10060;'; }
+        finally { btn.disabled = false; setTimeout(() => { btn.innerHTML = orig; btn.title = 'Run now'; }, 5000); }
+    };
+
+    window.showRunDetails = async function (id) {
+        document.getElementById('runModalBody').innerHTML = '<div class="text-center py-4"><span class="spinner-border spinner-border-sm me-2"></span>Loading�</div>';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('runModal')).show();
+        try {
+            const run = await (await fetch(`?handler=Run&id=${id}`)).json();
+            const icons = { completed:'?', stopped:'??', failed:'?', running:'?' };
+            let html = `<div class="d-flex gap-2 align-items-center mb-3 flex-wrap">
+                <span class="fw-bold">${icons[run.status]??'?'} ${esc(run.workflowTitle)}</span>
+                <span class="badge bg-secondary-subtle text-secondary border" style="font-size:.65rem">${run.status}</span>
+                <span class="text-muted small ms-auto">${run.startedAt}${run.finishedAt ? ' ? '+run.finishedAt : ''}</span></div>`;
+            if (run.stopReason) html += `<div class="alert alert-warning py-2 px-3 mb-3 small">${esc(run.stopReason)}</div>`;
+            for (const s of run.stepRuns) {
+                const isDec   = s.stepType === 'Decision';
+                const isHook  = s.stepType === 'Webhook';
+                const isChain = s.stepType === 'CallWorkflow';
+                const badgeCls   = isDec   ? 'bg-warning-subtle text-warning border border-warning-subtle'
+                                 : isHook  ? 'bg-success-subtle text-success border border-success-subtle'
+                                 : isChain ? 'bg-info-subtle text-info border border-info-subtle'
+                                 :           'bg-primary-subtle text-primary border border-primary-subtle';
+                const badgeLabel = isDec ? '&#9878; Decision' : isHook ? '&#128279; Webhook' : isChain ? '&#9939; Chain' : '&#9654; Execute';
+                const dec   = s.decision === 'STOP' ? '<span class="decision-stop ms-2">? STOP</span>' : s.decision === 'CONTINUE' ? '<span class="decision-continue ms-2">? CONTINUE</span>' : '';
+                html += `<div class="card mb-2">
+                    <div class="card-header py-2 px-3 d-flex align-items-center gap-2" style="font-size:.82rem">
+                        <span class="badge step-badge ${badgeCls}">${badgeLabel}</span>
+                        <span class="fw-semibold">Step ${s.stepOrder}: ${esc(s.stepName)}</span>${dec}
+                        <span class="text-muted small ms-auto">${s.runAt}</span>${!s.isSuccess?'<span class="badge bg-danger ms-1">failed</span>':''}
+                    </div>
+                    <div class="card-body py-2 px-3">
+                        <pre class="mb-0" style="font-size:.78rem;white-space:pre-wrap;word-break:break-word;max-height:220px;overflow-y:auto">${esc(s.output)}</pre>
+                    </div></div>`;
+            }
+            document.getElementById('runModalBody').innerHTML = html;
+            document.getElementById('runModalLabel').textContent = `Run #${run.id} � ${run.workflowTitle}`;
+        } catch { document.getElementById('runModalBody').innerHTML = '<div class="alert alert-danger">Failed to load run details.</div>'; }
+    };
+
+    const a = document.getElementById('wfAlert');
+    if (a) setTimeout(() => bootstrap.Alert.getOrCreateInstance(a).close(), 4000);
+
+    // ?? Delete single run ?????????????????????????????????????????????????????
+    window.deleteRun = async function (id, btn) {
+        if (!confirm('Delete this run? This cannot be undone.')) return;
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        btn.disabled  = true;
+        try {
+            const fd = new FormData();
+            fd.append('__RequestVerificationToken', document.querySelector('[name="__RequestVerificationToken"]')?.value ?? '');
+            const r = await fetch(`?handler=DeleteRun&id=${id}`, { method: 'POST', body: fd });
+            const d = await r.json();
+            if (d.success) {
+                const row = document.getElementById(`run-row-${id}`);
+                row?.remove();
+            } else {
+                btn.innerHTML = orig;
+                btn.disabled  = false;
+            }
+        } catch { btn.innerHTML = orig; btn.disabled = false; }
+    };
+
+    // ?? Delete all runs ???????????????????????????????????????????????????????
+    window.deleteAllRuns = async function () {
+        if (!confirm('Delete ALL run history? This cannot be undone.')) return;
+        try {
+            const fd = new FormData();
+            fd.append('__RequestVerificationToken', document.querySelector('[name="__RequestVerificationToken"]')?.value ?? '');
+            const r = await fetch('?handler=DeleteAllRuns', { method: 'POST', body: fd });
+            const d = await r.json();
+            if (d.success) location.reload();
+        } catch { /* silent */ }
+    };
+})();
+</script>
+}

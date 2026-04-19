@@ -1,0 +1,2953 @@
+@page
+@model SettingsModel
+@using Pulse.Models
+@{
+    ViewData["Title"] = "Settings";
+    var llmSaveSuccess = TempData["SaveSuccess"]    is bool b  && b;
+    var mcpSuccess     = TempData["McpSuccess"]     as string;
+    var skillSuccess   = TempData["SkillSuccess"]   as string;
+    var ragSuccess     = TempData["RagSuccess"]     as string;
+    var memSuccess     = TempData["MemSuccess"]     as string;
+    var dbConnSuccess2 = TempData["DbConnSuccess"]  as string;
+    var terminalSuccessTop = TempData["TerminalSuccess"] as string;
+    var agentMailSuccess   = TempData["AgentMailSuccess"] as string;
+    var logoSuccess    = TempData["LogoSuccess"]    as string;
+    var logoError      = TempData["LogoError"]      as string;
+}
+@section Styles {
+<style>
+    /* ── Settings tabs ─────────────────────────────────────────────────────── */
+    .settings-tabs { border-bottom: 2px solid #dee2e6; flex-wrap: wrap; gap: 0; }
+    .settings-tabs .nav-link {
+        color: #6c757d; font-size: .82rem; font-weight: 500;
+        padding: .48rem .9rem; border: 1px solid transparent;
+        border-radius: .375rem .375rem 0 0; white-space: nowrap;
+        cursor: pointer; background: none; transition: color .15s, background .15s;
+    }
+    .settings-tabs .nav-link:hover  { color: #212529; background: #f8f9fa; border-color: #e9ecef #e9ecef transparent; }
+    .settings-tabs .nav-link.active { color: #0d6efd; background: #fff; border-color: #dee2e6 #dee2e6 #fff; font-weight: 600; }
+    .settings-tab-pane { display: none; }
+    /* ── Settings section header */
+    .settings-section-header {
+        display:flex; align-items:center; gap:.5rem;
+        font-size:1rem; font-weight:600; color:#495057;
+    }
+    .key-row { display:flex; align-items:center; gap:.5rem; margin-bottom:.5rem; animation:rowIn .18s ease; }
+    @@keyframes rowIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
+    .key-num { width:2rem; text-align:center; font-size:.78rem; color:#6c757d; font-weight:600; flex-shrink:0; }
+    .key-row input { font-family:'Courier New',monospace; font-size:.88rem; letter-spacing:.04em; }
+    .btn-icon { width:34px; height:34px; padding:0; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .model-chip {
+        display:inline-block; cursor:pointer; font-size:.78rem;
+        padding:.2rem .55rem; border-radius:99px; border:1px solid #dee2e6;
+        background:#f8f9fa; color:#495057; transition:all .15s; user-select:none;
+    }
+    .model-chip:hover { background:#e9ecef; border-color:#0d6efd; color:#0d6efd; }
+    .info-badge {
+        font-size:.75rem; background:#e7f1ff; color:#084298;
+        border:1px solid #b6d4fe; border-radius:.4rem;
+        padding:.35rem .7rem; display:inline-flex; align-items:center; gap:.35rem;
+    }
+    .mcp-endpoint { max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .transport-badge { font-size:.7rem; text-transform:uppercase; letter-spacing:.05em; }
+    /* ── Skill instruction drop zone ── */
+    #skillDropOverlay {
+        border-radius: .375rem;
+        transition: opacity .15s;
+        font-size: 1.05rem;
+        font-weight: 500;
+        color: #0d6efd;
+        pointer-events: none;
+        background: rgba(13,110,253,.07);
+    }
+    #skillInstructions.drag-over { border-color: #0d6efd; box-shadow: 0 0 0 .25rem rgba(13,110,253,.15); }
+    .skill-file-badge {
+        display: inline-flex; align-items: center; gap: .3rem;
+        font-size: .75rem; background: #d1e7dd; color: #0a3622;
+        border: 1px solid #a3cfbb; border-radius: .35rem;
+        padding: .2rem .5rem; max-width: 220px;
+    }
+    .skill-file-badge span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
+    .skill-char-count { font-size: .72rem; color: #6c757d; white-space: nowrap; }
+    /* ── Memory ── */
+    .mem-importance { color: #f59e0b; letter-spacing: .05em; white-space: nowrap; }
+    .mem-src-auto   { font-size: .7rem; background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; border-radius:.3rem; padding:.1rem .4rem; }
+    .mem-src-manual { font-size: .7rem; background:#dcfce7; color:#166534; border:1px solid #bbf7d0; border-radius:.3rem; padding:.1rem .4rem; }
+    .mem-content-cell { max-width: 420px; white-space: pre-wrap; word-break: break-word; font-size: .875rem; }
+</style>
+}
+
+<div class="d-flex align-items-center gap-2 mb-3">
+    <h2 class="mb-0 fw-bold">⚙️ Settings</h2>
+</div>
+
+@* ── Alerts
+@if (llmSaveSuccess)
+{
+    <div id="llmAlert" class="alert alert-success alert-dismissible d-flex align-items-center gap-2 mb-4">
+        ✅ <span>LLM settings saved. Changes take effect on the next agent call.</span>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (mcpSuccess != null)
+{
+    <div id="mcpAlert" class="alert alert-success alert-dismissible d-flex align-items-center gap-2 mb-4">
+        ✅ <span>@mcpSuccess</span>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (skillSuccess != null)
+{
+    <div id="skillAlert" class="alert alert-success alert-dismissible d-flex align-items-center gap-2 mb-4">
+        ✅ <span>@skillSuccess</span>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (ragSuccess != null)
+{
+    <div id="ragAlert" class="alert alert-success alert-dismissible d-flex align-items-center gap-2 mb-4">
+        ✅ <span>@ragSuccess</span>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (memSuccess != null)
+{
+    <div id="memAlert" class="alert alert-success alert-dismissible d-flex align-items-center gap-2 mb-4">
+        ✅ <span>@memSuccess</span>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (logoSuccess != null)
+{
+    <div id="logoAlert" class="alert alert-success alert-dismissible d-flex align-items-center gap-2 mb-4">
+        ✅ <span>@logoSuccess</span>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (logoError != null)
+{
+    <div id="logoErrAlert" class="alert alert-danger alert-dismissible d-flex align-items-center gap-2 mb-4">
+        ❌ <span>@logoError</span>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+    </div>
+}
+@{
+    var appNameSuccess = TempData["AppNameSuccess"] as string;
+}
+@if (appNameSuccess != null)
+{
+    <div id="appNameAlert" class="alert alert-success alert-dismissible d-flex align-items-center gap-2 mb-4">
+        ✅ <span>@appNameSuccess</span>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+@* ── Appearance ──────────────────────────────────────────────────────────── *@
+<div class="card shadow-sm rounded-3 mb-3">
+    <div class="card-body py-3 px-4">
+
+        @* Dark mode row *@
+        <div class="d-flex align-items-center justify-content-between gap-3 flex-wrap">
+            <div class="d-flex align-items-center gap-2">
+                <span style="font-size:1.15rem">🎨</span>
+                <div>
+                    <div class="fw-semibold" style="font-size:.9rem">Appearance</div>
+                    <div class="text-muted" id="themeDesc" style="font-size:.78rem">Light mode is active.</div>
+                </div>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <span title="Light mode" style="font-size:1.05rem;line-height:1">☀️</span>
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch" id="darkModeToggle"
+                           style="width:2.6rem;height:1.3rem;cursor:pointer" aria-label="Toggle dark mode">
+                </div>
+                <span title="Dark mode" style="font-size:1.05rem;line-height:1">🌙</span>
+            </div>
+        </div>
+
+        <hr class="my-3" />
+
+        @* App name row *@
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+            <div class="d-flex align-items-center gap-2">
+                <span style="font-size:1.15rem">🏷️</span>
+                <div>
+                    <div class="fw-semibold" style="font-size:.9rem">App Name</div>
+                    <div class="text-muted" style="font-size:.78rem">Browser title &middot; sidebar &middot; auth pages &middot; emails</div>
+                </div>
+            </div>
+            <div class="d-flex align-items-center gap-2 ms-auto">
+                <form method="post" asp-page-handler="SaveAppName" class="d-inline-flex align-items-center gap-2">
+                    @Html.AntiForgeryToken()
+                    <input asp-for="AppName" class="form-control form-control-sm" style="max-width:240px"
+                           placeholder="Pulse" maxlength="60" spellcheck="false" />
+                    <button type="submit" class="btn btn-sm btn-primary">💾 Save</button>
+                </form>
+            </div>
+        </div>
+
+        <hr class="my-3" />
+
+        @* Logo upload row *@
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+            <div class="d-flex align-items-center gap-2">
+                <span style="font-size:1.15rem">🖼️</span>
+                <div>
+                    <div class="fw-semibold" style="font-size:.9rem">Sidebar Logo</div>
+                    <div class="text-muted" style="font-size:.78rem">PNG · exactly 200 × 50 px · max 256 KB</div>
+                </div>
+            </div>
+            <div class="d-flex align-items-center gap-2 ms-auto flex-wrap">
+                @if (!string.IsNullOrEmpty(Model.CurrentLogoFileName))
+                {
+                    <img src="/images/app-logo.png?v=@Model.CurrentLogoVersion"
+                         alt="Current logo"
+                         style="height:24px;width:auto;max-width:120px;object-fit:contain;border:1px solid #dee2e6;border-radius:.25rem;padding:2px 6px;background:#fff" />
+                    <form method="post" asp-page-handler="DeleteLogo" class="d-inline">
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn-sm btn-outline-danger"
+                                onclick="return confirm('Remove the custom logo and restore the default?')">
+                            🗑 Remove
+                        </button>
+                    </form>
+                }
+                <form method="post" asp-page-handler="UploadLogo" enctype="multipart/form-data"
+                      class="d-inline-flex align-items-center gap-2">
+                    @Html.AntiForgeryToken()
+                    <input type="file" name="LogoUpload" id="logoFileInput" accept=".png,image/png"
+                           class="form-control form-control-sm" style="max-width:210px" />
+                    <button type="submit" class="btn btn-sm btn-primary">⬆ Upload</button>
+                </form>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+@* ── Tab navigation ──────────────────────────────────────────────────────── *@
+<ul class="nav settings-tabs mb-0" id="settingsTabs" role="tablist">
+    <li class="nav-item"><button type="button" class="nav-link" data-tab="llm"     >🤖 LLM</button></li>
+    <li class="nav-item"><button type="button" class="nav-link" data-tab="mcp"     >🔌 MCP</button></li>
+    <li class="nav-item"><button type="button" class="nav-link" data-tab="data"    >🗄️ Data</button></li>
+    <li class="nav-item"><button type="button" class="nav-link" data-tab="skills"  >⚡ Skills</button></li>
+    <li class="nav-item"><button type="button" class="nav-link" data-tab="rag"     >🗂️ RAG</button></li>
+    <li class="nav-item"><button type="button" class="nav-link" data-tab="memory"  >🧠 Memory</button></li>
+    <li class="nav-item"><button type="button" class="nav-link" data-tab="terminal">🖥️ Terminal</button></li>
+    <li class="nav-item"><button type="button" class="nav-link" data-tab="agentmail">✉️ AgentMail</button></li>
+    <li class="nav-item"><button type="button" class="nav-link" data-tab="security">🔒 Security</button></li>
+</ul>
+
+@* ═══════════════════════════════════════════════════════════════════════════
+   LLM CONFIGURATION
+═══════════════════════════════════════════════════════════════════════════ *@
+<div id="tab-pane-llm" class="settings-tab-pane pt-4">
+<form method="post" id="llmForm" novalidate>
+    @Html.AntiForgeryToken()
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white py-3">
+            <div class="settings-section-header">🤖 LLM Configuration</div>
+        </div>
+        <div class="card-body">
+
+            <div class="mb-4">
+                <label asp-for="Input.ModelId" class="form-label fw-semibold">Model ID</label>
+                <input asp-for="Input.ModelId" class="form-control" list="geminiModelList"
+                       placeholder="e.g. gemini-2.0-flash" autocomplete="off" spellcheck="false" />
+                <datalist id="geminiModelList">
+                    <option value="gemini-2.0-flash">gemini-2.0-flash — fast &amp; efficient (recommended)</option>
+                    <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite — lowest cost</option>
+                    <option value="gemini-2.5-pro-preview-05-06">gemini-2.5-pro-preview — highest capability</option>
+                    <option value="gemini-1.5-pro">gemini-1.5-pro — large context window</option>
+                    <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+                </datalist>
+                <span asp-validation-for="Input.ModelId" class="text-danger small"></span>
+                <div class="mt-2 d-flex flex-wrap gap-1">
+                    <span class="text-muted small me-1 align-self-center">Quick select:</span>
+                    <span class="model-chip" data-model="gemini-2.0-flash">gemini-2.0-flash</span>
+                    <span class="model-chip" data-model="gemini-2.5-pro-preview-05-06">gemini-2.5-pro</span>
+                    <span class="model-chip" data-model="gemini-1.5-pro">gemini-1.5-pro</span>
+                    <span class="model-chip" data-model="gemini-1.5-flash">gemini-1.5-flash</span>
+                    <span class="model-chip" data-model="gemini-2.0-flash-lite">gemini-2.0-flash-lite</span>
+                </div>
+            </div>
+
+            <hr class="my-3" />
+
+            <div class="mb-2">
+                <label class="form-label fw-semibold mb-0">API Keys</label>
+                <div class="text-muted small mt-1 mb-3">
+                    Keys rotate in round-robin after every call. A 5-second rate-limit gap is enforced automatically.<br />
+                    <span class="info-badge mt-2">
+                        ℹ️ Stored in <code>llm-settings.json</code>. Use User Secrets or Azure Key Vault for production.
+                    </span>
+                </div>
+                <div id="keysContainer">
+                    @for (int i = 0; i < Model.Input.ApiKeys.Count; i++)
+                    {
+                        <div class="key-row" data-index="@i">
+                            <span class="key-num">#@(i + 1)</span>
+                            <input type="password" name="Input.ApiKeys[@i]" value="@Model.Input.ApiKeys[i]"
+                                   class="form-control" placeholder="AIza…" spellcheck="false" autocomplete="off" />
+                            <button type="button" class="btn btn-outline-secondary btn-icon btn-toggle-vis" title="Show/hide">👁</button>
+                            <button type="button" class="btn btn-outline-danger btn-icon btn-remove-key" title="Remove">✕</button>
+                        </div>
+                    }
+                </div>
+                <button type="button" id="addKeyBtn" class="btn btn-outline-primary btn-sm mt-2">➕ Add Key</button>
+            </div>
+        </div>
+        <div class="card-footer bg-white border-top d-flex justify-content-end py-3">
+            <button type="submit" class="btn btn-primary px-4" id="llmSaveBtn">
+                <span id="llmSaveTxt">💾 Save LLM Settings</span>
+                <span id="llmSaveSpinner" class="spinner-border spinner-border-sm ms-1 d-none"></span>
+            </button>
+        </div>
+    </div>
+</form>
+</div><!-- /tab-pane-llm -->
+
+<div id="tab-pane-mcp" class="settings-tab-pane pt-4">
+@* ═══════════════════════════════════════════════════════════════════════════
+   MCP SERVERS
+═══════════════════════════════════════════════════════════════════════════ *@
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white py-3 d-flex align-items-center justify-content-between">
+        <div class="settings-section-header">🔌 MCP Servers</div>
+        <button type="button" class="btn btn-primary btn-sm" onclick="openAddMcpModal()">
+            ➕ Add Server
+        </button>
+    </div>
+
+    @if (Model.McpServers.Count == 0)
+    {
+        <div class="card-body text-center py-5 text-muted">
+            <div style="font-size:2.5rem">🔌</div>
+            <p class="mt-2 mb-1">No MCP servers configured yet.</p>
+            <p class="small">Add a server to give the AI agent access to external tools (filesystem, GitHub, databases, custom APIs…)</p>
+            <button type="button" class="btn btn-outline-primary btn-sm mt-2" onclick="openAddMcpModal()">
+                ➕ Add your first MCP server
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">Name</th>
+                        <th>Transport</th>
+                        <th>Endpoint / Command</th>
+                        <th>Status</th>
+                        <th class="text-end pe-3">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var srv in Model.McpServers)
+                    {
+                        var endpoint = srv.TransportType == "stdio"
+                            ? $"{srv.Command} {srv.Arguments}".Trim()
+                            : srv.Url ?? "";
+                        <tr>
+                            <td class="ps-3 fw-semibold">@srv.Name</td>
+                            <td>
+                                <span class="badge @(srv.TransportType == "stdio" ? "bg-warning text-dark" : "bg-info text-dark") transport-badge">
+                                    @srv.TransportType
+                                </span>
+                            </td>
+                            <td>
+                                <span class="mcp-endpoint text-muted small d-inline-block" title="@endpoint">
+                                    @endpoint
+                                </span>
+                            </td>
+                            <td>
+                                @if (srv.IsEnabled)
+                                {
+                                    <span class="badge bg-success">Enabled</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Disabled</span>
+                                }
+                            </td>
+                            <td class="text-end pe-3">
+                                <div class="btn-group btn-group-sm">
+                                    <button type="button" class="btn btn-outline-secondary"
+                                            onclick="openEditMcpModal('@srv.Id','@Html.Raw(srv.Name.Replace("'","\\\'"))','@srv.TransportType','@(srv.Url ?? "")','@(srv.Command ?? "")','@(srv.Arguments ?? "")','@srv.IsEnabled')">
+                                        ✏️
+                                    </button>
+                                    <form method="post" asp-page-handler="ToggleMcp" class="d-inline">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@srv.Id" />
+                                        <button type="submit"
+                                                class="btn @(srv.IsEnabled ? "btn-outline-warning" : "btn-outline-success")"
+                                                title="@(srv.IsEnabled ? "Disable" : "Enable")">
+                                            @(srv.IsEnabled ? "⏸" : "▶")
+                                        </button>
+                                    </form>
+                                    <button type="button" class="btn btn-outline-danger"
+                                            onclick="confirmDeleteMcp('@srv.Id','@Html.Raw(srv.Name.Replace("'","\\\'"))')">
+                                        🗑
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer bg-white text-muted small py-2 px-3">
+            @Model.McpServers.Count server(s) — @Model.McpServers.Count(s => s.IsEnabled) enabled
+        </div>
+    }
+</div>
+
+@* ── Hidden delete form ────────────────────────────────────────────────────── *@
+<form id="mcpDeleteForm" method="post" asp-page-handler="DeleteMcp">
+    @Html.AntiForgeryToken()
+    <input type="hidden" id="mcpDeleteId" name="id" value="" />
+</form>
+
+@* ═══════════════════════════════════════════════════════════════════════════
+   ADD / EDIT MODAL
+═══════════════════════════════════════════════════════════════════════════ *@
+<div class="modal fade" id="mcpModal" tabindex="-1" aria-labelledby="mcpModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="mcpModalLabel">Add MCP Server</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" asp-page-handler="SaveMcp" id="mcpForm" novalidate>
+                @Html.AntiForgeryToken()
+                <div class="modal-body">
+
+                    <!-- Inline error banner (populated by JS on fetch failure) -->
+                    <div id="mcpModalError" class="alert alert-danger alert-dismissible py-2 px-3 mb-3 d-none" role="alert">
+                        <span id="mcpModalErrorText"></span>
+                        <button type="button" class="btn-close btn-sm" onclick="document.getElementById('mcpModalError').classList.add('d-none')"></button>
+                    </div>
+
+                    <input type="hidden" asp-for="McpServer.Id" id="mcpId" />
+
+                    <div class="mb-3">
+                        <label asp-for="McpServer.Name" class="form-label fw-semibold">
+                            Name <span class="text-danger">*</span>
+                        </label>
+                        <input asp-for="McpServer.Name" id="mcpName" class="form-control"
+                               placeholder="e.g. Filesystem, GitHub, Brave Search" />
+                        <span asp-validation-for="McpServer.Name" class="text-danger small"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="McpServer.TransportType" class="form-label fw-semibold">Transport</label>
+                        <select asp-for="McpServer.TransportType" id="mcpTransport" class="form-select"
+                                onchange="updateTransportFields(this.value)">
+                            <option value="http">HTTP / SSE (remote server)</option>
+                            <option value="stdio">stdio (local process)</option>
+                        </select>
+                    </div>
+
+                    <div id="httpFields">
+                        <div class="mb-3">
+                            <label asp-for="McpServer.Url" class="form-label fw-semibold">
+                                Server URL <span class="text-danger">*</span>
+                            </label>
+                            <input asp-for="McpServer.Url" id="mcpUrl" class="form-control"
+                                   placeholder="https://mcp.example.com/sse" spellcheck="false" />
+                            <span asp-validation-for="McpServer.Url" class="text-danger small"></span>
+                            <div class="form-text">Full URL of the SSE or Streamable HTTP endpoint.</div>
+                        </div>
+                    </div>
+
+                    <div id="stdioFields" style="display:none">
+                        <div class="mb-3">
+                            <label asp-for="McpServer.Command" class="form-label fw-semibold">
+                                Command <span class="text-danger">*</span>
+                            </label>
+                            <input asp-for="McpServer.Command" id="mcpCommand" class="form-control"
+                                   placeholder="npx" spellcheck="false" style="font-family:monospace" />
+                            <span asp-validation-for="McpServer.Command" class="text-danger small"></span>
+                        </div>
+                        <div class="mb-3">
+                            <label asp-for="McpServer.Arguments" class="form-label fw-semibold">Arguments</label>
+                            <input asp-for="McpServer.Arguments" id="mcpArguments" class="form-control"
+                                   placeholder="-y @@modelcontextprotocol/server-filesystem /tmp"
+                                   spellcheck="false" style="font-family:monospace" />
+                            <div class="form-text">Space-separated. Wrap paths with spaces in quotes is not yet supported.</div>
+                        </div>
+                    </div>
+
+                    <div class="form-check form-switch mt-3">
+                        <input asp-for="McpServer.IsEnabled" id="mcpEnabled" class="form-check-input"
+                               type="checkbox" role="switch" checked />
+                        <label asp-for="McpServer.IsEnabled" class="form-check-label">Enabled</label>
+                    </div>
+
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">💾 Save Server</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+</div><!-- /tab-pane-mcp -->
+
+<div id="tab-pane-data" class="settings-tab-pane pt-4">
+@* ═══════════════════════════════════════════════════════════════════════════
+   DATABASE CONNECTIONS
+═══════════════════════════════════════════════════════════════════════════ *@
+@{
+    var dbConnSuccess = TempData["DbConnSuccess"] as string;
+}
+@if (dbConnSuccess != null)
+{
+    <div id="dbConnAlert" class="alert alert-success alert-dismissible d-flex align-items-center gap-2 mb-4">
+        ✅ <span>@dbConnSuccess</span>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+    </div>
+}
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white py-3 d-flex align-items-center justify-content-between">
+        <div class="settings-section-header">🗄️ Database Connections</div>
+        <button type="button" class="btn btn-primary btn-sm" onclick="openAddDbConnModal()">
+            ➕ Add Connection
+        </button>
+    </div>
+
+    @if (!Model.DatabaseConnections.Any())
+    {
+        <div class="card-body text-center py-5 text-muted">
+            <div style="font-size:2.5rem">🗄️</div>
+            <p class="mt-2 mb-1 fw-semibold">No database connections yet.</p>
+            <p class="small">Add a connection to let the AI agent query SQL Server, Azure SQL, PostgreSQL, MySQL, MariaDB, or Oracle databases directly.</p>
+            <button type="button" class="btn btn-outline-primary btn-sm mt-2" onclick="openAddDbConnModal()">
+                ➕ Add your first connection
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">ID</th>
+                        <th>Label</th>
+                        <th>Provider</th>
+                        <th>Read-only</th>
+                        <th>Max Rows</th>
+                        <th>Status</th>
+                        <th class="text-end pe-3">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var (id, entry) in Model.DatabaseConnections)
+                    {
+                        var providerBadge = entry.Provider switch {
+                            DatabaseProvider.AzureSQL    => "bg-primary",
+                            DatabaseProvider.PostgreSQL  => "bg-info text-dark",
+                            DatabaseProvider.MySQL       => "bg-warning text-dark",
+                            DatabaseProvider.MariaDB     => "bg-warning text-dark",
+                            DatabaseProvider.Oracle      => "bg-danger",
+                            _                            => "bg-secondary"
+                        };
+                        <tr>
+                            <td class="ps-3">
+                                <code class="small">@id</code>
+                            </td>
+                            <td class="fw-semibold">@entry.Label</td>
+                            <td>
+                                <span class="badge @providerBadge transport-badge">@entry.Provider</span>
+                            </td>
+                            <td>
+                                @if (entry.ReadOnly)
+                                {
+                                    <span class="badge bg-success">🔒 Yes</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-warning text-dark">✏️ No</span>
+                                }
+                            </td>
+                            <td class="text-muted small">@entry.MaxRows</td>
+                            <td>
+                                @if (entry.IsEnabled)
+                                {
+                                    <span class="badge bg-success">Enabled</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Disabled</span>
+                                }
+                            </td>
+                            <td class="text-end pe-3">
+                                <div class="btn-group btn-group-sm">
+                                    <button type="button" class="btn btn-outline-secondary"
+                                            title="Test connection"
+                                            onclick="testDbConn('@id', this)">
+                                        🔌
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary"
+                                            title="Edit"
+                                            onclick="openEditDbConnModal('@id','@Html.Raw(entry.Label.Replace("'","\\'"))','@entry.Provider','@Html.Raw(entry.ConnectionString.Replace("'","\\'"))','@entry.IsEnabled','@entry.ReadOnly','@entry.MaxRows','@string.Join(",",entry.AllowedSchemas)')">
+                                        ✏️
+                                    </button>
+                                    <form method="post" asp-page-handler="ToggleDbConn" class="d-inline">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@id" />
+                                        <button type="submit"
+                                                class="btn @(entry.IsEnabled ? "btn-outline-warning" : "btn-outline-success")"
+                                                title="@(entry.IsEnabled ? "Disable" : "Enable")">
+                                            @(entry.IsEnabled ? "⏸" : "▶")
+                                        </button>
+                                    </form>
+                                    <button type="button" class="btn btn-outline-danger"
+                                            title="Delete"
+                                            onclick="confirmDeleteDbConn('@id')">
+                                        🗑
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer bg-white text-muted small py-2 px-3">
+            @Model.DatabaseConnections.Count connection(s) —
+            @Model.DatabaseConnections.Count(c => c.Entry.IsEnabled) enabled
+        </div>
+    }
+</div>
+
+@* ── Hidden delete form ────────────────────────────────────────────────────── *@
+<form id="dbConnDeleteForm" method="post" asp-page-handler="DeleteDbConn">
+    @Html.AntiForgeryToken()
+    <input type="hidden" id="dbConnDeleteId" name="id" value="" />
+</form>
+
+@* ═══════════════════════════════════════════════════════════════════════════
+   DATABASE CONNECTION ADD / EDIT MODAL
+═══════════════════════════════════════════════════════════════════════════ *@
+<div class="modal fade" id="dbConnModal" tabindex="-1" aria-labelledby="dbConnModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="dbConnModalLabel">Add Database Connection</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" asp-page-handler="SaveDbConn" id="dbConnForm" novalidate>
+                @Html.AntiForgeryToken()
+                <div class="modal-body">
+
+                    <div id="dbConnModalError" class="alert alert-danger alert-dismissible py-2 px-3 mb-3 d-none" role="alert">
+                        <span id="dbConnModalErrorText"></span>
+                        <button type="button" class="btn-close btn-sm"
+                                onclick="document.getElementById('dbConnModalError').classList.add('d-none')"></button>
+                    </div>
+                    <div id="dbConnModalSuccess" class="alert alert-success py-2 px-3 mb-3 d-none">
+                        <span id="dbConnModalSuccessText"></span>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-5">
+                            <label asp-for="DbConn.ConnectionId" class="form-label fw-semibold">
+                                Connection ID <span class="text-danger">*</span>
+                            </label>
+                            <input asp-for="DbConn.ConnectionId" id="dbConnId" class="form-control"
+                                   placeholder="sales-db" spellcheck="false" autocomplete="off"
+                                   oninput="this.value=this.value.toLowerCase().replace(/\s+/g,'-')" />
+                            <div class="form-text">Lowercase slug used by the agent, e.g. <code>sales-db</code>.</div>
+                        </div>
+                        <div class="col-md-7">
+                            <label asp-for="DbConn.Label" class="form-label fw-semibold">Label</label>
+                            <input asp-for="DbConn.Label" id="dbConnLabel" class="form-control"
+                                   placeholder="Production Sales Database" />
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="DbConn.Provider" class="form-label fw-semibold">Provider</label>
+                        <select asp-for="DbConn.Provider" id="dbConnProvider" class="form-select"
+                                onchange="updateDbConnProviderHint()">
+                            <option value="SqlServer">SQL Server (on-premises)</option>
+                            <option value="AzureSQL">Azure SQL (SQL / Azure AD / Managed Identity)</option>
+                            <option value="PostgreSQL">PostgreSQL · AWS RDS PG · Aurora PG · Azure DB for PG</option>
+                            <option value="MySQL">MySQL · AWS RDS MySQL · Aurora MySQL · Azure DB for MySQL</option>
+                            <option value="MariaDB">MariaDB</option>
+                            <option value="Oracle">Oracle (on-premises / OCI cloud)</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="DbConn.ConnectionString" class="form-label fw-semibold">
+                            Connection String <span class="text-danger">*</span>
+                        </label>
+                        <div class="input-group">
+                            <input asp-for="DbConn.ConnectionString" id="dbConnStr" class="form-control"
+                                   type="password" spellcheck="false" autocomplete="off"
+                                   placeholder="Server=…;Database=…;User Id=…;Password=…;" style="font-family:monospace;font-size:.85rem" />
+                            <button type="button" class="btn btn-outline-secondary"
+                                    onclick="toggleDbConnStrVis(this)" title="Show / hide">👁</button>
+                        </div>
+                        <div id="dbConnProviderHint" class="form-text text-muted mt-1"></div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label asp-for="DbConn.MaxRows" class="form-label fw-semibold">Max Rows</label>
+                            <input asp-for="DbConn.MaxRows" id="dbConnMaxRows" class="form-control"
+                                   type="number" min="1" max="10000" value="500" />
+                            <div class="form-text">Row cap on <code>db_execute_query</code> results.</div>
+                        </div>
+                        <div class="col-md-8">
+                            <label asp-for="DbConn.AllowedSchemas" class="form-label fw-semibold">
+                                Allowed Schemas
+                                <span class="text-muted fw-normal small">(optional)</span>
+                            </label>
+                            <input asp-for="DbConn.AllowedSchemas" id="dbConnSchemas" class="form-control"
+                                   placeholder="public, reporting, dbo" />
+                            <div class="form-text">Comma-separated. Leave blank to allow all schemas.</div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-4">
+                        <div class="form-check form-switch">
+                            <input asp-for="DbConn.ReadOnly" id="dbConnReadOnly" class="form-check-input"
+                                   type="checkbox" role="switch" checked />
+                            <label asp-for="DbConn.ReadOnly" class="form-check-label fw-semibold">
+                                Read-only
+                                <span class="text-muted fw-normal small">(SELECT only)</span>
+                            </label>
+                        </div>
+                        <div class="form-check form-switch">
+                            <input asp-for="DbConn.IsEnabled" id="dbConnEnabled" class="form-check-input"
+                                   type="checkbox" role="switch" checked />
+                            <label asp-for="DbConn.IsEnabled" class="form-check-label">Enabled</label>
+                        </div>
+                    </div>
+
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary me-auto"
+                            id="dbConnTestBtn" onclick="testDbConnFromModal()">
+                        🔌 Test Connection
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="dbConnSaveBtn">💾 Save Connection</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@* ═══════════════════════════════════════════════════════════════════════════
+   OTHER DATA SOURCES (Flat Files)
+═══════════════════════════════════════════════════════════════════════════ *@
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white py-3 d-flex align-items-center justify-content-between">
+        <div class="settings-section-header">📂 Other Data Sources</div>
+        <button type="button" class="btn btn-primary btn-sm" onclick="openAddFlatFileModal()">
+            ➕ Add Data Source
+        </button>
+    </div>
+
+    @if (!Model.FlatFileSources.Any())
+    {
+        <div class="card-body text-center py-5 text-muted">
+            <div style="font-size:2.5rem">📂</div>
+            <p class="mt-2 mb-1">No flat-file data sources yet.</p>
+            <p class="small">Connect CSV, Excel, JSON, XML, YAML, or fixed-width files so the agent can read and analyse them directly.</p>
+            <button type="button" class="btn btn-outline-primary btn-sm mt-2" onclick="openAddFlatFileModal()">
+                ➕ Add your first data source
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">ID</th>
+                        <th>Label</th>
+                        <th>Format</th>
+                        <th>File</th>
+                        <th>Max Rows</th>
+                        <th>Status</th>
+                        <th class="text-end pe-3">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var src in Model.FlatFileSources)
+                    {
+                        var fmtBadge = src.Format switch {
+                            FlatFileFormat.Csv          => "bg-success",
+                            FlatFileFormat.TabDelimited => "bg-success",
+                            FlatFileFormat.Excel        => "bg-primary",
+                            FlatFileFormat.Json         => "bg-warning text-dark",
+                            FlatFileFormat.Xml          => "bg-info text-dark",
+                            FlatFileFormat.Yaml         => "bg-secondary",
+                            FlatFileFormat.FixedWidth   => "bg-dark",
+                            _                           => "bg-secondary"
+                        };
+                        var fmtLabel = src.Format switch {
+                            FlatFileFormat.Csv          => "CSV",
+                            FlatFileFormat.TabDelimited => "Tab",
+                            FlatFileFormat.Excel        => "Excel",
+                            FlatFileFormat.Json         => "JSON",
+                            FlatFileFormat.Xml          => "XML",
+                            FlatFileFormat.Yaml         => "YAML",
+                            FlatFileFormat.FixedWidth   => "Fixed-W",
+                            _                           => src.Format.ToString()
+                        };
+                        <tr>
+                            <td class="ps-3"><code class="small">@src.Id</code></td>
+                            <td class="fw-semibold">@src.Label</td>
+                            <td><span class="badge @fmtBadge transport-badge">@fmtLabel</span></td>
+                            <td class="text-muted small" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                                title="@src.FilePath">@System.IO.Path.GetFileName(src.FilePath)</td>
+                            <td class="text-muted small">@src.MaxRows</td>
+                            <td>
+                                @if (src.IsEnabled)
+                                {
+                                    <span class="badge bg-success">Enabled</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Disabled</span>
+                                }
+                            </td>
+                            <td class="text-end pe-3">
+                                <div class="btn-group btn-group-sm">
+                                    <button type="button" class="btn btn-outline-secondary"
+                                            title="Preview first 10 rows"
+                                            onclick="previewFlatFile('@src.Id', this)">👁</button>
+                                    <button type="button" class="btn btn-outline-secondary"
+                                            title="Edit"
+                                            onclick="openEditFlatFileModal('@src.Id')">✏️</button>
+                                    <form method="post" asp-page-handler="ToggleFlatFile" class="d-inline">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@src.Id" />
+                                        <button type="submit"
+                                                class="btn @(src.IsEnabled ? "btn-outline-warning" : "btn-outline-success")"
+                                                title="@(src.IsEnabled ? "Disable" : "Enable")">
+                                            @(src.IsEnabled ? "⏸" : "▶")
+                                        </button>
+                                    </form>
+                                    <button type="button" class="btn btn-outline-danger"
+                                            title="Delete"
+                                            onclick="confirmDeleteFlatFile('@src.Id','@Html.Raw(src.Label.Replace("'","\\\'"))')">🗑</button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer bg-white text-muted small py-2 px-3">
+            @Model.FlatFileSources.Count source(s) — @Model.FlatFileSources.Count(s => s.IsEnabled) enabled
+        </div>
+    }
+</div>
+
+@* ── Hidden delete form ──────────────────────────────────────────────────── *@
+<form id="ffDeleteForm" method="post" asp-page-handler="DeleteFlatFile">
+    @Html.AntiForgeryToken()
+    <input type="hidden" id="ffDeleteId" name="id" value="" />
+</form>
+
+@* ── Preview modal ──────────────────────────────────────────────────────── *@
+<div class="modal fade" id="ffPreviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title" id="ffPreviewTitle">Data Preview</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div id="ffPreviewBody" class="p-3">
+                    <div class="text-center py-4 text-muted">
+                        <span class="spinner-border spinner-border-sm me-2"></span>Loading…
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@* ═══════════════════════════════════════════════════════════════════════════
+   FLAT FILE ADD / EDIT MODAL
+═══════════════════════════════════════════════════════════════════════════ *@
+<div class="modal fade" id="ffModal" tabindex="-1" aria-labelledby="ffModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="ffModalLabel">Add Data Source</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="ffForm" method="post" asp-page-handler="SaveFlatFile" novalidate>
+                @Html.AntiForgeryToken()
+                <div class="modal-body">
+
+                    <div id="ffModalError"   class="alert alert-danger  py-2 px-3 mb-3 d-none"><span id="ffModalErrorText"></span></div>
+                    <div id="ffModalSuccess" class="alert alert-success py-2 px-3 mb-3 d-none"><span id="ffModalSuccessText"></span></div>
+
+                    <input type="hidden" name="FlatFile.Id" id="ffId" />
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-8">
+                            <label class="form-label fw-semibold">Label <span class="text-danger">*</span></label>
+                            <input name="FlatFile.Label" id="ffLabel" class="form-control"
+                                   placeholder="Monthly Sales Data" maxlength="200" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Format</label>
+                            <select name="FlatFile.Format" id="ffFormat" class="form-select" onchange="onFfFormatChange()">
+                                <option value="0">CSV (.csv)</option>
+                                <option value="1">Tab-delimited (.tsv / .txt)</option>
+                                <option value="2">Excel (.xlsx / .xls)</option>
+                                <option value="3">JSON (.json)</option>
+                                <option value="4">XML (.xml)</option>
+                                <option value="5">YAML (.yaml / .yml)</option>
+                                <option value="6">Fixed-width text</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">
+                            File <span class="text-danger" id="ffFileRequired">*</span>
+                        </label>
+                        <input type="file" name="FlatFileUpload" id="ffFile" class="form-control"
+                               accept=".csv,.tsv,.txt,.xlsx,.xls,.json,.xml,.yaml,.yml" />
+                        <div id="ffCurrentFile" class="mt-2 d-none d-flex align-items-center gap-2">
+                            <span class="badge bg-secondary-subtle border border-secondary-subtle text-secondary-emphasis"
+                                  style="font-size:.8rem;font-family:monospace" id="ffCurrentFileName"></span>
+                            <span class="text-muted small">current file &mdash; leave blank to keep it</span>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4" id="ffDelimiterGroup">
+                            <label class="form-label fw-semibold">Delimiter <span class="text-muted fw-normal small">(optional)</span></label>
+                            <input name="FlatFile.Delimiter" id="ffDelimiter" class="form-control"
+                                   maxlength="1" placeholder="auto (,)" style="font-family:monospace" />
+                            <div class="form-text">Leave blank to use the format default (comma/tab).</div>
+                        </div>
+                        <div class="col-md-4" id="ffSheetGroup" style="display:none">
+                            <label class="form-label fw-semibold">Sheet Name <span class="text-muted fw-normal small">(optional)</span></label>
+                            <input name="FlatFile.SheetName" id="ffSheet" class="form-control"
+                                   placeholder="Sheet1" />
+                            <div class="form-text">Leave blank to use the first sheet.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Encoding</label>
+                            <select name="FlatFile.Encoding" id="ffEncoding" class="form-select">
+                                <option value="UTF-8">UTF-8 (default)</option>
+                                <option value="windows-1252">Windows-1252 (Latin)</option>
+                                <option value="iso-8859-1">ISO-8859-1</option>
+                                <option value="UTF-16">UTF-16</option>
+                                <option value="ASCII">ASCII</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Max Rows</label>
+                            <input name="FlatFile.MaxRows" id="ffMaxRows" class="form-control"
+                                   type="number" min="1" max="100000" value="1000" />
+                        </div>
+                    </div>
+
+                    <div class="mb-3" id="ffHeadersGroup">
+                        <div class="form-check form-switch">
+                            <input name="FlatFile.HasHeaders" id="ffHeaders" class="form-check-input"
+                                   type="checkbox" role="switch" checked />
+                            <label class="form-check-label fw-semibold" for="ffHeaders">
+                                First row contains column headers
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3" id="ffFixedWidthGroup" style="display:none">
+                        <label class="form-label fw-semibold">Fixed-Width Column Definitions</label>
+                        <textarea name="FlatFile.FixedWidthSpec" id="ffFixedWidthSpec" class="form-control"
+                                  rows="5" style="font-family:monospace;font-size:.82rem"
+                                  placeholder="One column per line in format  Name:Start:Length&#10;E.g.:&#10;FirstName:0:20&#10;LastName:20:20&#10;Age:40:3"></textarea>
+                        <div class="form-text">Format: <code>ColumnName:StartPosition:Length</code> — positions are 0-based.</div>
+                    </div>
+
+                    <div class="form-check form-switch">
+                        <input name="FlatFile.IsEnabled" id="ffEnabled" class="form-check-input"
+                               type="checkbox" role="switch" checked />
+                        <label class="form-check-label fw-semibold" for="ffEnabled">Enabled</label>
+                    </div>
+
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" id="ffSaveBtn" class="btn btn-primary">💾 Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+</div><!-- /tab-pane-data -->
+
+<div id="tab-pane-skills" class="settings-tab-pane pt-4">
+@* ═══════════════════════════════════════════════════════════════════════════
+   SKILLS
+═══════════════════════════════════════════════════════════════════════════ *@
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white py-3 d-flex align-items-center justify-content-between">
+        <div class="settings-section-header">⚡ Skills</div>
+        <button type="button" class="btn btn-primary btn-sm" onclick="openAddSkillModal()">
+            ➕ Add Skill
+        </button>
+    </div>
+
+    @if (Model.Skills.Count == 0)
+    {
+        <div class="card-body text-center py-5 text-muted">
+            <div style="font-size:2.5rem">⚡</div>
+            <p class="mt-2 mb-1">No skills configured yet.</p>
+            <p class="small">Skills inject custom instructions into every new agent session — like Claude's custom system prompts.</p>
+            <button type="button" class="btn btn-outline-primary btn-sm mt-2" onclick="openAddSkillModal()">
+                ➕ Add your first skill
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3" style="width:2.5rem"></th>
+                        <th>Name</th>
+                        <th>Description</th>
+                        <th>Status</th>
+                        <th class="text-end pe-3">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var sk in Model.Skills)
+                    {
+                        var descTrunc = sk.Description.Length > 60
+                            ? sk.Description[..57] + "…"
+                            : sk.Description;
+                        <tr>
+                            <td class="ps-3 text-center" style="font-size:1.3rem">@sk.Icon</td>
+                            <td class="fw-semibold">@sk.Name</td>
+                            <td class="text-muted small">@descTrunc</td>
+                            <td>
+                                @if (sk.IsActive)
+                                {
+                                    <span class="badge bg-success">Active</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Inactive</span>
+                                }
+                            </td>
+                            <td class="text-end pe-3">
+                                <div class="btn-group btn-group-sm">
+                                    <button type="button" class="btn btn-outline-secondary"
+                                            data-skill-id="@sk.Id"
+                                            data-skill-name="@sk.Name"
+                                            data-skill-icon="@sk.Icon"
+                                            data-skill-description="@sk.Description"
+                                            data-skill-instructions="@sk.Instructions"
+                                            data-skill-active="@sk.IsActive"
+                                            onclick="openEditSkillModal(this)">
+                                        ✏️
+                                    </button>
+                                    <form method="post" asp-page-handler="ToggleSkill" class="d-inline">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@sk.Id" />
+                                        <button type="submit"
+                                                class="btn @(sk.IsActive ? "btn-outline-warning" : "btn-outline-success")"
+                                                title="@(sk.IsActive ? "Deactivate" : "Activate")">
+                                            @(sk.IsActive ? "⏸" : "▶")
+                                        </button>
+                                    </form>
+                                    <button type="button" class="btn btn-outline-danger"
+                                            onclick="confirmDeleteSkill('@sk.Id','@Html.Raw(sk.Name.Replace("'","\\\'"))')">
+                                        🗑
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer bg-white text-muted small py-2 px-3">
+            @Model.Skills.Count skill(s) — @Model.Skills.Count(s => s.IsActive) active
+        </div>
+    }
+</div>
+
+@* ── Hidden delete form for skills ────────────────────────────────────────── *@
+<form id="skillDeleteForm" method="post" asp-page-handler="DeleteSkill">
+    @Html.AntiForgeryToken()
+    <input type="hidden" id="skillDeleteId" name="id" value="" />
+</form>
+
+@* ═══════════════════════════════════════════════════════════════════════════
+   SKILL ADD / EDIT MODAL
+═══════════════════════════════════════════════════════════════════════════ *@
+<div class="modal fade" id="skillModal" tabindex="-1" aria-labelledby="skillModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="skillModalLabel">Add Skill</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" asp-page-handler="SaveSkill" id="skillForm" novalidate>
+                @Html.AntiForgeryToken()
+                <div class="modal-body">
+
+                    <!-- Inline error -->
+                    <div id="skillModalError" class="alert alert-danger alert-dismissible py-2 px-3 mb-3 d-none" role="alert">
+                        <span id="skillModalErrorText"></span>
+                        <button type="button" class="btn-close btn-sm"
+                                onclick="document.getElementById('skillModalError').classList.add('d-none')"></button>
+                    </div>
+
+                    <input type="hidden" asp-for="Skill.Id" id="skillId" />
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-auto" style="width:90px">
+                            <label asp-for="Skill.Icon" class="form-label fw-semibold">Icon</label>
+                            <input asp-for="Skill.Icon" id="skillIcon" class="form-control text-center"
+                                   placeholder="⚡" style="font-size:1.4rem" maxlength="6" />
+                        </div>
+                        <div class="col">
+                            <label asp-for="Skill.Name" class="form-label fw-semibold">
+                                Name <span class="text-danger">*</span>
+                            </label>
+                            <input asp-for="Skill.Name" id="skillName" class="form-control"
+                                   placeholder="e.g. Business Analyst, Code Reviewer, Data Scientist" />
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Skill.Description" class="form-label fw-semibold">
+                            Description <span class="text-muted fw-normal small">(optional)</span>
+                        </label>
+                        <input asp-for="Skill.Description" id="skillDescription" class="form-control"
+                               placeholder="One-line summary of what this skill does" />
+                    </div>
+
+                    <div class="mb-3">
+                        <!-- Label row: title + file badge + upload button -->
+                        <div class="d-flex align-items-center justify-content-between mb-1 gap-2 flex-wrap">
+                            <label asp-for="Skill.Instructions" class="form-label fw-semibold mb-0">
+                                Instructions <span class="text-danger">*</span>
+                            </label>
+                            <div class="d-flex align-items-center gap-2">
+                                <div id="skillFileBadge" class="skill-file-badge d-none" title="File loaded">
+                                    📄 <span id="skillFileNameText"></span>
+                                    <button type="button" class="btn-close btn-sm flex-shrink-0"
+                                            style="font-size:.6rem"
+                                            onclick="clearSkillFileBadge()"
+                                            title="Dismiss"></button>
+                                </div>
+                                <button type="button" class="btn btn-outline-secondary btn-sm"
+                                        onclick="document.getElementById('skillFileInput').click()"
+                                        title="Load instructions from .txt, .md or .prompt file">
+                                    📁 Upload file
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Hidden file input (accepts common text/prompt formats) -->
+                        <input type="file" id="skillFileInput"
+                               accept=".txt,.md,.markdown,.text,.prompt,.system,.json"
+                               class="d-none" />
+
+                        <!-- Drop zone wraps the textarea so overlay can be positioned over it -->
+                        <div id="skillDropZone" class="position-relative">
+                            <textarea asp-for="Skill.Instructions" id="skillInstructions"
+                                      class="form-control" rows="7" spellcheck="true"
+                                      placeholder="Type instructions here — or drag-and-drop a .txt / .md file onto this area…"></textarea>
+                            <!-- Semi-transparent drop overlay, shown only while dragging -->
+                            <div id="skillDropOverlay"
+                                 class="position-absolute top-0 start-0 w-100 h-100 d-none
+                                        d-flex align-items-center justify-content-center rounded border border-2 border-primary">
+                                📄 Drop file to load instructions
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center mt-1">
+                            <div class="form-text mb-0">
+                                Injected as a system message at session start. Markdown is supported.
+                                Drag-and-drop a <code>.txt</code> or <code>.md</code> file to import.
+                            </div>
+                            <span id="skillCharCount" class="skill-char-count ms-3">0 chars</span>
+                        </div>
+                    </div>
+
+                    <div class="form-check form-switch">
+                        <input asp-for="Skill.IsActive" id="skillIsActive" class="form-check-input"
+                               type="checkbox" role="switch" checked />
+                        <label asp-for="Skill.IsActive" class="form-check-label">Active</label>
+                    </div>
+
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" id="skillSaveBtn" class="btn btn-primary">💾 Save Skill</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+</div><!-- /tab-pane-skills -->
+
+<div id="tab-pane-rag" class="settings-tab-pane pt-4">
+@* ═══════════════════════════════════════════════════════════════════════════
+   RAG DOCUMENTS
+═══════════════════════════════════════════════════════════════════════════ *@
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white py-3 d-flex align-items-center justify-content-between">
+        <div class="settings-section-header">🗂️ RAG Documents</div>
+        <button type="button" class="btn btn-primary btn-sm" onclick="openAddRagModal()">
+            ➕ Add Document
+        </button>
+    </div>
+
+    @if (Model.RagDocuments.Count == 0)
+    {
+        <div class="card-body text-center py-5 text-muted">
+            <div style="font-size:2.5rem">🗂️</div>
+            <p class="mt-2 mb-1">No RAG documents yet.</p>
+            <p class="small">Upload files or paste text to build a knowledge base the agent can search on every query.</p>
+            <button type="button" class="btn btn-outline-primary btn-sm mt-2" onclick="openAddRagModal()">
+                ➕ Add your first document
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">Name</th>
+                        <th>Description</th>
+                        <th>Source</th>
+                        <th>Chunks</th>
+                        <th>Status</th>
+                        <th class="text-end pe-3">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var doc in Model.RagDocuments)
+                    {
+                        var desc = doc.Description.Length > 50
+                            ? doc.Description[..47] + "…"
+                            : doc.Description;
+                        var srcLabel = doc.OriginalFileName is { Length: > 0 }
+                            ? $"📄 {doc.OriginalFileName}"
+                            : "📝 Text";
+                        <tr>
+                            <td class="ps-3 fw-semibold">@doc.Name</td>
+                            <td class="text-muted small">@desc</td>
+                            <td class="text-muted small" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                                title="@doc.OriginalFileName">@srcLabel</td>
+                            <td>
+                                    @if (doc.ChunkCount > 0)
+                                    {
+                                        <span class="badge bg-secondary rag-chunk-badge"
+                                              data-doc-id="@doc.Id"
+                                              title="Loading embedding status…">
+                                            @doc.ChunkCount
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-warning text-dark" title="No chunks stored yet">0</span>
+                                    }
+                                </td>
+                            <td>
+                                @if (doc.IsEnabled)
+                                {
+                                    <span class="badge bg-success">Enabled</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Disabled</span>
+                                }
+                            </td>
+                            <td class="text-end pe-3">
+                                <div class="btn-group btn-group-sm">
+                                    <button type="button" class="btn btn-outline-secondary"
+                                            onclick="openEditRagModal('@doc.Id','@Html.Raw(doc.Name.Replace("'","\\\'"))','@Html.Raw(doc.Description.Replace("'","\\\'"))','@(doc.OriginalFileName ?? "")','@doc.ChunkCount','@doc.IsEnabled')">
+                                        ✏️
+                                    </button>
+                                    <button type="button" class="btn btn-outline-info"
+                                            id="reembed_@doc.Id"
+                                            onclick="reembedRag('@doc.Id','@Html.Raw(doc.Name.Replace("'","\\\'"))')"
+                                            title="Re-generate embeddings using the Gemini API">
+                                        🔄
+                                    </button>
+                                    <form method="post" asp-page-handler="ToggleRag" class="d-inline">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@doc.Id" />
+                                        <button type="submit"
+                                                class="btn @(doc.IsEnabled ? "btn-outline-warning" : "btn-outline-success")"
+                                                title="@(doc.IsEnabled ? "Disable" : "Enable")">
+                                            @(doc.IsEnabled ? "⏸" : "▶")
+                                        </button>
+                                    </form>
+                                    <button type="button" class="btn btn-outline-danger"
+                                            onclick="confirmDeleteRag('@doc.Id','@Html.Raw(doc.Name.Replace("'","\\\'"))')">
+                                        🗑
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer bg-white text-muted small py-2 px-3">
+            @Model.RagDocuments.Count document(s) — @Model.RagDocuments.Count(d => d.IsEnabled) enabled —
+            @Model.RagDocuments.Sum(d => d.ChunkCount) total chunks
+        </div>
+    }
+</div>
+
+@* ── Hidden delete form for RAG ───────────────────────────────────────────── *@
+<form id="ragDeleteForm" method="post" asp-page-handler="DeleteRag">
+    @Html.AntiForgeryToken()
+    <input type="hidden" id="ragDeleteId" name="id" value="" />
+</form>
+
+@* ── Hidden re-embed form for RAG ─────────────────────────────────────────── *@
+<form id="ragReembedForm" method="post" asp-page-handler="ReembedRag">
+    @Html.AntiForgeryToken()
+    <input type="hidden" id="ragReembedId" name="id" value="" />
+</form>
+
+@* ═══════════════════════════════════════════════════════════════════════════
+   RAG ADD / EDIT MODAL
+═══════════════════════════════════════════════════════════════════════════ *@
+<div class="modal fade" id="ragModal" tabindex="-1" aria-labelledby="ragModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="ragModalLabel">Add RAG Document</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" asp-page-handler="SaveRag" id="ragForm"
+                  enctype="multipart/form-data" novalidate>
+                @Html.AntiForgeryToken()
+                <div class="modal-body">
+
+                    <!-- Inline error -->
+                    <div id="ragModalError" class="alert alert-danger alert-dismissible py-2 px-3 mb-3 d-none">
+                        <span id="ragModalErrorText"></span>
+                        <button type="button" class="btn-close btn-sm"
+                                onclick="document.getElementById('ragModalError').classList.add('d-none')"></button>
+                    </div>
+
+                    <input type="hidden" name="RagDoc.Id"         id="ragId" />
+                    <input type="hidden" name="RagDoc.SourceType" id="ragSourceType" value="text" />
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Name <span class="text-danger">*</span></label>
+                        <input name="RagDoc.Name" id="ragName" class="form-control"
+                               placeholder="e.g. Company FAQ, Product Manual" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">
+                            Description <span class="text-muted fw-normal small">(optional)</span>
+                        </label>
+                        <input name="RagDoc.Description" id="ragDescription" class="form-control"
+                               placeholder="One-line summary of this knowledge source" />
+                    </div>
+
+                    <!-- Source type tabs -->
+                    <ul class="nav nav-pills mb-3 gap-1" id="ragSourceTabs">
+                        <li class="nav-item">
+                            <button type="button" class="nav-link active px-3 py-1"
+                                    id="ragTabText" onclick="setRagSource('text')">
+                                📝 Paste text
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button type="button" class="nav-link px-3 py-1"
+                                    id="ragTabFile" onclick="setRagSource('file')">
+                                📁 Upload file
+                            </button>
+                        </li>
+                    </ul>
+
+                    <!-- ── Paste text panel ─────────────────────────────────── -->
+                    <div id="ragPanelText">
+                        <div class="d-flex align-items-center justify-content-between mb-1 gap-2 flex-wrap">
+                            <label class="form-label fw-semibold mb-0">
+                                Content <span class="text-danger">*</span>
+                            </label>
+                            <div class="d-flex align-items-center gap-2">
+                                <div id="ragTextFileBadge" class="skill-file-badge d-none">
+                                    📄 <span id="ragTextFileNameText"></span>
+                                    <button type="button" class="btn-close btn-sm flex-shrink-0"
+                                            style="font-size:.6rem"
+                                            onclick="document.getElementById('ragTextFileBadge').classList.add('d-none')"></button>
+                                </div>
+                                <button type="button" class="btn btn-outline-secondary btn-sm"
+                                        onclick="document.getElementById('ragTextFileInput').click()"
+                                        title="Load text from file">
+                                    📁 Upload file
+                                </button>
+                            </div>
+                        </div>
+                        <input type="file" id="ragTextFileInput"
+                               accept=".txt,.md,.markdown,.text,.csv,.prompt"
+                               class="d-none" />
+                        <div id="ragTextDropZone" class="position-relative">
+                            <textarea name="RagDoc.Content" id="ragContent" class="form-control"
+                                      rows="7" placeholder="Paste your knowledge-base text here, or drag-and-drop a .txt / .md file…"></textarea>
+                            <div id="ragTextDropOverlay"
+                                 class="position-absolute top-0 start-0 w-100 h-100 d-none
+                                        d-flex align-items-center justify-content-center rounded border border-2 border-primary"
+                                 style="background:rgba(13,110,253,.07);pointer-events:none;font-size:1.05rem;font-weight:500;color:#0d6efd;">
+                                📄 Drop file to load content
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-between mt-1">
+                            <span class="form-text mb-0">
+                                Drag-and-drop a <code>.txt</code> or <code>.md</code> file to auto-fill.
+                            </span>
+                            <span id="ragCharCount" class="skill-char-count ms-3">0 chars</span>
+                        </div>
+                    </div>
+
+                    <!-- ── Upload file panel ────────────────────────────────── -->
+                    <div id="ragPanelFile" style="display:none">
+                        <!-- Existing source info (edit mode) -->
+                        <div id="ragExistingInfo" class="alert alert-info py-2 small d-none mb-3">
+                            Current: <strong id="ragExistingFile">-</strong>
+                            (<strong id="ragExistingChunks">0</strong> chunks)
+                            — upload a new file below to replace it.
+                        </div>
+
+                        <!-- Drop zone / file picker -->
+                        <div id="ragFileDropZone"
+                             class="border rounded p-4 text-center position-relative"
+                             style="border-style:dashed!important;cursor:pointer;min-height:110px">
+                            <div id="ragFileDropContent">
+                                <div style="font-size:2rem">📁</div>
+                                <div class="fw-semibold mt-1">Drop file here or <u>click to browse</u></div>
+                                <div class="text-muted small mt-1">
+                                    Accepts: <code>.txt</code> <code>.md</code> <code>.csv</code>
+                                </div>
+                            </div>
+                            <div id="ragFileSelectedInfo" class="d-none">
+                                <div class="text-success fw-semibold fs-6">
+                                    📄 <span id="ragSelectedFileName"></span>
+                                </div>
+                                <div class="text-muted small mt-1">
+                                    <span id="ragSelectedFileSize"></span> — ready to upload
+                                </div>
+                            </div>
+                            <!-- Invisible file input overlaying the drop zone -->
+                            <input type="file" id="ragFileInput" name="ragFileInput"
+                                   accept=".txt,.md,.markdown,.csv,.text"
+                                   class="position-absolute top-0 start-0 w-100 h-100"
+                                   style="opacity:0;cursor:pointer" />
+                        </div>
+                        <div class="form-text mt-1">
+                            The file is uploaded to the server, chunked, and embedded automatically.
+                            Large files may take a few seconds.
+                        </div>
+                    </div>
+
+                    <div class="form-check form-switch mt-3">
+                        <input type="checkbox" name="RagDoc.IsEnabled" id="ragEnabled"
+                               class="form-check-input" role="switch" checked />
+                        <label for="ragEnabled" class="form-check-label">Enabled</label>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" id="ragSaveBtn" class="btn btn-primary">
+                        💾 Save Document
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+</div><!-- /tab-pane-rag -->
+
+<div id="tab-pane-memory" class="settings-tab-pane pt-4">
+@* ═══════════════════════════════════════════════════════════════════════════
+   MEMORY
+═══════════════════════════════════════════════════════════════════════════ *@
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white py-3 d-flex align-items-center justify-content-between">
+        <div class="settings-section-header">🧠 Memory</div>
+        <div class="d-flex gap-2">
+            <a href="/Memory" class="btn btn-outline-secondary btn-sm" title="Full Memory page">
+                ↗ Full Page
+            </a>
+            <div class="dropdown">
+                <button type="button" class="btn btn-outline-danger btn-sm dropdown-toggle"
+                        data-bs-toggle="dropdown" aria-expanded="false" title="Bulk delete memories">
+                    🗑 Clear…
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><h6 class="dropdown-header small">Delete memories created in…</h6></li>
+                    <li><button class="dropdown-item small" onclick="bulkDeleteMemory('yesterday')">📅 Yesterday</button></li>
+                    <li><button class="dropdown-item small" onclick="bulkDeleteMemory('7d')">📅 Last 7 days</button></li>
+                    <li><button class="dropdown-item small" onclick="bulkDeleteMemory('15d')">📅 Last 15 days</button></li>
+                    <li><button class="dropdown-item small" onclick="bulkDeleteMemory('30d')">📅 Last 30 days</button></li>
+                    <li><hr class="dropdown-divider" /></li>
+                    <li><button class="dropdown-item small text-danger fw-semibold" onclick="bulkDeleteMemory('all')">⚠️ All memories</button></li>
+                </ul>
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" onclick="openAddMemoryModal()">
+                ➕ Add Memory
+            </button>
+        </div>
+    </div>
+
+    @if (!Model.Memories.Any(m => m.IsActive))
+    {
+        <div class="card-body text-center py-5 text-muted">
+            <div style="font-size:2.5rem">🧠</div>
+            <p class="mt-2 mb-1">No memories yet.</p>
+            <p class="small">The agent automatically extracts memorable facts after each conversation.<br />You can also add them manually.</p>
+            <button type="button" class="btn btn-outline-primary btn-sm mt-2" onclick="openAddMemoryModal()">
+                ➕ Add your first memory
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">Memory</th>
+                        <th style="width:120px">Category</th>
+                        <th style="width:115px">Importance</th>
+                        <th style="width:85px">Source</th>
+                        <th style="width:110px">Added</th>
+                        <th class="text-end pe-3" style="width:85px">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var mem in Model.Memories.Where(m => m.IsActive))
+                    {
+                        <tr>
+                            <td class="ps-3">
+                                <span class="mem-content-cell">@mem.Content</span>
+                            </td>
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(mem.Category))
+                                {
+                                    <span class="badge bg-light text-secondary border small">@mem.Category</span>
+                                }
+                            </td>
+                            <td>
+                                <span class="mem-importance">
+                                    @(new string('★', mem.Importance))@(new string('☆', 5 - mem.Importance))
+                                </span>
+                            </td>
+                            <td>
+                                <span class="@(mem.Source == "auto" ? "mem-src-auto" : "mem-src-manual")">
+                                    @(mem.Source == "auto" ? "🤖 auto" : "✍️ manual")
+                                </span>
+                            </td>
+                            <td class="text-muted small">@mem.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</td>
+                            <td class="text-end pe-3">
+                                <div class="btn-group btn-group-sm">
+                                    <button type="button" class="btn btn-outline-secondary"
+                                            data-mem-id="@mem.Id"
+                                            data-mem-content="@mem.Content"
+                                            data-mem-category="@(mem.Category ?? "")"
+                                            data-mem-importance="@mem.Importance"
+                                            onclick="openEditMemoryModal(this)"
+                                            title="Edit">
+                                        ✏️
+                                    </button>
+                                    <button type="button" class="btn btn-outline-danger"
+                                            onclick="confirmDeleteMemory(@mem.Id)"
+                                            title="Delete">
+                                        🗑
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer bg-white text-muted small py-2 px-3 d-flex justify-content-between align-items-center">
+            <span>
+                @Model.Memories.Count(m => m.IsActive) active —
+                @Model.Memories.Count(m => m.IsActive && m.Source == "auto") auto-extracted,
+                @Model.Memories.Count(m => m.IsActive && m.Source == "manual") manual
+            </span>
+            <a href="/Memory" class="text-decoration-none small">↗ View all on Memory page</a>
+        </div>
+    }
+</div>
+
+@* ── Hidden delete form for Memory ────────────────────────────────────────── *@
+<form id="memDeleteForm" method="post" asp-page-handler="DeleteMemory">
+    @Html.AntiForgeryToken()
+    <input type="hidden" id="memDeleteId" name="id" value="" />
+</form>
+
+@* ═══════════════════════════════════════════════════════════════════════════
+   MEMORY ADD / EDIT MODAL
+═══════════════════════════════════════════════════════════════════════════ *@
+<div class="modal fade" id="memoryModal" tabindex="-1" aria-labelledby="memoryModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="memoryModalLabel">Add Memory</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="memoryForm" method="post" asp-page-handler="SaveMemory" novalidate>
+                @Html.AntiForgeryToken()
+                <div class="modal-body">
+                    <div id="memModalError" class="alert alert-danger py-2 px-3 d-none">
+                        <span id="memModalErrorText"></span>
+                    </div>
+
+                    <input type="hidden" name="MemInput.Id" id="memInputId" />
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">
+                            Memory <span class="text-danger">*</span>
+                        </label>
+                        <textarea name="MemInput.Content" id="memInputContent" class="form-control" rows="3"
+                                  placeholder="e.g. User prefers concise bullet-point answers"></textarea>
+                        <div class="form-text">One concrete fact or preference the agent should remember.</div>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col">
+                            <label class="form-label fw-semibold">
+                                Category <span class="text-muted fw-normal small">(optional)</span>
+                            </label>
+                            <input name="MemInput.Category" id="memInputCategory" class="form-control"
+                                   placeholder="preference, project, personal…" />
+                        </div>
+                        <div class="col-auto" style="width:150px">
+                            <label class="form-label fw-semibold">Importance</label>
+                            <select name="MemInput.Importance" id="memInputImportance" class="form-select">
+                                <option value="1">☆☆☆☆☆ Low</option>
+                                <option value="2">★☆☆☆☆</option>
+                                <option value="3" selected>★★★☆☆ Normal</option>
+                                <option value="4">★★★★☆ High</option>
+                                <option value="5">★★★★★ Critical</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" id="memSaveBtn" class="btn btn-primary">💾 Save Memory</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+</div><!-- /tab-pane-memory -->
+
+<div id="tab-pane-terminal" class="settings-tab-pane pt-4">
+@* ═══════════════════════════════════════════════════════════════════════════
+   TERMINAL (SHELL EXECUTION)
+═══════════════════════════════════════════════════════════════════════════ *@
+@{
+    var terminalSuccess = TempData["TerminalSuccess"] as string;
+    var ts = Model.Terminal;
+}
+@if (terminalSuccess != null)
+{
+    <div class="alert alert-success alert-dismissible d-flex align-items-center gap-2 mb-4">
+        ✅ <span>@terminalSuccess</span>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+    </div>
+}
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white py-3">
+        <div class="settings-section-header">🖥️ Terminal</div>
+    </div>
+    <div class="card-body">
+        <p class="text-muted small mb-3">
+            Allow the agent to execute shell commands (PowerShell, cmd, or bash) on the host machine
+            and use the output in its responses. <strong>Only enable on trusted environments.</strong>
+        </p>
+        <form method="post" asp-page-handler="SaveTerminal">
+            <div class="mb-3 d-flex align-items-center gap-3">
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           asp-for="Terminal.IsEnabled" id="terminalEnabled">
+                    <label class="form-check-label fw-semibold" for="terminalEnabled">
+                        Enable terminal command execution
+                    </label>
+                </div>
+                @if (ts.IsEnabled)
+                {
+                    <span class="badge bg-success-subtle text-success border border-success-subtle">Active</span>
+                }
+                else
+                {
+                    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Disabled</span>
+                }
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label asp-for="Terminal.DefaultShell" class="form-label fw-semibold">Default Shell</label>
+                    <select asp-for="Terminal.DefaultShell" class="form-select">
+                        <option value="powershell">PowerShell</option>
+                        <option value="cmd">cmd.exe</option>
+                        <option value="bash">Bash / WSL</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="Terminal.TimeoutSeconds" class="form-label fw-semibold">Timeout (seconds)</label>
+                    <input asp-for="Terminal.TimeoutSeconds" type="number"
+                           class="form-control" min="5" max="300" />
+                    <div class="form-text">5 – 300 seconds per command.</div>
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="Terminal.MaxOutputLength" class="form-label fw-semibold">Max Output (chars)</label>
+                    <input asp-for="Terminal.MaxOutputLength" type="number"
+                           class="form-control" min="1000" max="100000" />
+                    <div class="form-text">Output is truncated beyond this limit.</div>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Terminal.WorkingDirectory" class="form-label fw-semibold">Working Directory</label>
+                <input asp-for="Terminal.WorkingDirectory" type="text" class="form-control"
+                       placeholder="Leave empty to use the application root directory"
+                       style="font-family:monospace;font-size:.88rem" />
+                <div class="form-text">Absolute path. The agent will run commands from this directory unless overridden per-command.</div>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-sm">💾 Save Terminal Settings</button>
+        </form>
+    </div>
+</div>
+</div><!-- /tab-pane-terminal -->
+
+@* ═══════════════════════════════════════════════════════════════════════════
+   AGENTMAIL
+═══════════════════════════════════════════════════════════════════════════ *@
+<div id="tab-pane-agentmail" class="settings-tab-pane pt-4">
+@{
+    var am = Model.AgentMail;
+}
+@if (agentMailSuccess != null)
+{
+    <div id="agentMailAlert" class="alert alert-success alert-dismissible d-flex align-items-center gap-2 mb-4" role="alert">
+        ✅ <span>@agentMailSuccess</span>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+    </div>
+}
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white py-3">
+        <div class="settings-section-header">✉️ AgentMail</div>
+        <p class="text-muted small mb-0">
+            AgentMail lets the app send emails (e.g. password reset) from a dedicated inbox.
+            <a href="https://agentmail.to" target="_blank" rel="noopener" class="ms-1">Get an API key ↗</a>
+        </p>
+    </div>
+    <div class="card-body">
+        <form method="post" asp-page-handler="SaveAgentMail">
+            @Html.AntiForgeryToken()
+
+            <div class="mb-3">
+                <div class="form-check form-switch">
+                    <input asp-for="AgentMail.IsEnabled" class="form-check-input" id="agentMailEnabled"
+                           role="switch" style="width:2.6rem;height:1.3rem" />
+                    <label class="form-check-label fw-semibold" for="agentMailEnabled">
+                        Enable AgentMail
+                    </label>
+                </div>
+                <div class="form-text">When disabled, outgoing emails (e.g. password reset) will not be sent.</div>
+            </div>
+
+            <hr class="my-3" />
+
+            <div class="mb-3">
+                <label asp-for="AgentMail.DefaultInbox" class="form-label fw-semibold">Default Inbox (From address)</label>
+                <input asp-for="AgentMail.DefaultInbox" type="text" class="form-control"
+                       placeholder="noreply@yourdomain.agentmail.to" spellcheck="false" autocomplete="off" />
+                <div class="form-text">The inbox address emails are sent <em>from</em>. Must exist in your AgentMail account.</div>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="AgentMail.ApiKey" class="form-label fw-semibold">API Key</label>
+                <div class="input-group" style="max-width:560px">
+                    <input asp-for="AgentMail.ApiKey" type="password" class="form-control"
+                           placeholder="am_us_inbox_…" spellcheck="false" autocomplete="off"
+                           id="agentMailApiKey" />
+                    <button type="button" class="btn btn-outline-secondary"
+                            onclick="var i=document.getElementById('agentMailApiKey');i.type=i.type==='password'?'text':'password'">
+                        👁
+                    </button>
+                </div>
+                <div class="form-text">Found in your AgentMail dashboard under <em>API Keys</em>.</div>
+            </div>
+
+            <div class="mb-4">
+                <label asp-for="AgentMail.BaseUrl" class="form-label fw-semibold">API Base URL</label>
+                <input asp-for="AgentMail.BaseUrl" type="text" class="form-control"
+                       placeholder="https://api.agentmail.to/v0" spellcheck="false" autocomplete="off" />
+                <div class="form-text">Leave as default unless you are using a self-hosted AgentMail instance.</div>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-sm">💾 Save AgentMail Settings</button>
+        </form>
+    </div>
+</div>
+</div><!-- /tab-pane-agentmail -->
+
+@* ═══════════════════════════════════════════════════════════════════════════
+   SECURITY
+═══════════════════════════════════════════════════════════════════════════ *@
+<div id="tab-pane-security" class="settings-tab-pane pt-4">
+@{
+    var securitySuccess = TempData["SecuritySuccess"] as string;
+    var sec = Model.Security;
+}
+@if (securitySuccess != null)
+{
+    <div class="alert alert-success alert-dismissible fade show py-2 px-3 mb-3" role="alert" id="securityAlert">
+        ✅ <span>@securitySuccess</span>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white py-3">
+        <div class="settings-section-header">🔒 Login Security</div>
+        <p class="text-muted small mb-0">Protect accounts from brute-force attacks by limiting failed sign-in attempts.</p>
+    </div>
+    <div class="card-body">
+        <form method="post" asp-page-handler="SaveSecurity">
+            @Html.AntiForgeryToken()
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <label asp-for="Security.MaxFailedLoginAttempts" class="form-label fw-semibold">
+                        Max failed attempts before lockout
+                    </label>
+                    <input asp-for="Security.MaxFailedLoginAttempts" type="number" min="1" max="20"
+                           class="form-control" style="max-width:120px" />
+                    <span asp-validation-for="Security.MaxFailedLoginAttempts" class="text-danger small"></span>
+                    <div class="form-text">Allowed range: 1 – 20. Default: 5.</div>
+                </div>
+                <div class="col-md-6">
+                    <label asp-for="Security.LoginLockoutHours" class="form-label fw-semibold">
+                        Lockout duration (hours)
+                    </label>
+                    <input asp-for="Security.LoginLockoutHours" type="number" min="1" max="168"
+                           class="form-control" style="max-width:120px" />
+                    <span asp-validation-for="Security.LoginLockoutHours" class="text-danger small"></span>
+                    <div class="form-text">Allowed range: 1 – 168 (1 week). Default: 1.</div>
+                </div>
+            </div>
+            <div class="alert alert-info py-2 px-3 mt-4 mb-3" style="font-size:.83rem;border-radius:.55rem">
+                ℹ️ After <strong>@sec.MaxFailedLoginAttempts</strong> failed attempt(s), the account is locked for
+                <strong>@sec.LoginLockoutHours</strong> hour(s). Users can bypass the wait by resetting their password.
+                Changes take effect immediately — no restart required.
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">💾 Save Security Settings</button>
+        </form>
+    </div>
+</div>
+</div><!-- /tab-pane-security -->
+
+@section Scripts {
+<script>
+(function () {
+    // ── Auto-dismiss alerts ───────────────────────────────────────────────────
+    ['llmAlert', 'mcpAlert', 'skillAlert', 'ragAlert', 'memAlert', 'dbConnAlert', 'securityAlert', 'agentMailAlert', 'appNameAlert'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) setTimeout(() => bootstrap.Alert.getOrCreateInstance(el).close(), 4000);
+    });
+
+    // ── LLM: model chips ──────────────────────────────────────────────────────
+    const modelInput = document.querySelector('[name="Input.ModelId"]');
+    document.querySelectorAll('.model-chip').forEach(c =>
+        c.addEventListener('click', () => { modelInput.value = c.dataset.model; modelInput.focus(); }));
+
+    // ── LLM: API key list ─────────────────────────────────────────────────────
+    const keysContainer = document.getElementById('keysContainer');
+
+    function escHtml(s) {
+        return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function reindexKeys() {
+        keysContainer.querySelectorAll('.key-row').forEach((row, i) => {
+            row.dataset.index = i;
+            row.querySelector('input').name = `Input.ApiKeys[${i}]`;
+            row.querySelector('.key-num').textContent = `#${i + 1}`;
+        });
+    }
+
+    function buildKeyRow(idx, val) {
+        const d = document.createElement('div');
+        d.className = 'key-row'; d.dataset.index = idx;
+        d.innerHTML = `<span class="key-num">#${idx+1}</span>
+            <input type="password" name="Input.ApiKeys[${idx}]" value="${escHtml(val)}"
+                   class="form-control" placeholder="AIza…" spellcheck="false" autocomplete="off"/>
+            <button type="button" class="btn btn-outline-secondary btn-icon btn-toggle-vis" title="Show/hide">👁</button>
+            <button type="button" class="btn btn-outline-danger btn-icon btn-remove-key" title="Remove">✕</button>`;
+        return d;
+    }
+
+    keysContainer.addEventListener('click', e => {
+        const tv = e.target.closest('.btn-toggle-vis');
+        if (tv) {
+            const inp = tv.closest('.key-row').querySelector('input');
+            const hide = inp.type === 'password';
+            inp.type = hide ? 'text' : 'password';
+            tv.textContent = hide ? '🙈' : '👁';
+            return;
+        }
+        const rm = e.target.closest('.btn-remove-key');
+        if (rm) { rm.closest('.key-row').remove(); reindexKeys(); }
+    });
+
+    document.getElementById('addKeyBtn').addEventListener('click', () => {
+        const idx = keysContainer.querySelectorAll('.key-row').length;
+        const row = buildKeyRow(idx, '');
+        keysContainer.appendChild(row);
+        row.querySelector('input').focus();
+    });
+
+    document.getElementById('llmForm').addEventListener('submit', () => {
+        document.getElementById('llmSaveTxt').textContent = 'Saving…';
+        document.getElementById('llmSaveSpinner').classList.remove('d-none');
+        document.getElementById('llmSaveBtn').disabled = true;
+    });
+
+    // ── MCP modal helpers ─────────────────────────────────────────────────────
+    window.updateTransportFields = function (type) {
+        document.getElementById('httpFields').style.display  = type === 'http'  ? '' : 'none';
+        document.getElementById('stdioFields').style.display = type === 'stdio' ? '' : 'none';
+    };
+
+    function clearMcpModal() {
+        document.getElementById('mcpModalError').classList.add('d-none');
+        document.getElementById('mcpId').value        = '';
+        document.getElementById('mcpName').value      = '';
+        document.getElementById('mcpTransport').value = 'http';
+        document.getElementById('mcpUrl').value       = '';
+        document.getElementById('mcpCommand').value   = '';
+        document.getElementById('mcpArguments').value = '';
+        document.getElementById('mcpEnabled').checked = true;
+        updateTransportFields('http');
+    }
+
+    window.openAddMcpModal = function () {
+        document.getElementById('mcpModalLabel').textContent = 'Add MCP Server';
+        clearMcpModal();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('mcpModal')).show();
+    };
+
+    window.openEditMcpModal = function (id, name, type, url, cmd, args, enabled) {
+        document.getElementById('mcpModalLabel').textContent = 'Edit MCP Server';
+        document.getElementById('mcpModalError').classList.add('d-none');
+        document.getElementById('mcpId').value        = id;
+        document.getElementById('mcpName').value      = name;
+        document.getElementById('mcpTransport').value = type;
+        document.getElementById('mcpUrl').value       = url;
+        document.getElementById('mcpCommand').value   = cmd;
+        document.getElementById('mcpArguments').value = args;
+        document.getElementById('mcpEnabled').checked = (enabled === 'True');
+        updateTransportFields(type);
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('mcpModal')).show();
+    };
+
+    window.confirmDeleteMcp = function (id, name) {
+        if (!confirm(`Delete MCP server "${name}"?\n\nThis cannot be undone.`)) return;
+        document.getElementById('mcpDeleteId').value = id;
+        document.getElementById('mcpDeleteForm').submit();
+    };
+
+    // ── Skills modal ──────────────────────────────────────────────────────────
+
+    // ── file upload helpers ───────────────────────────────────────────────────
+    const skillInstructions = document.getElementById('skillInstructions');
+    const skillFileInput    = document.getElementById('skillFileInput');
+    const skillDropZone     = document.getElementById('skillDropZone');
+    const skillDropOverlay  = document.getElementById('skillDropOverlay');
+    const skillFileBadge    = document.getElementById('skillFileBadge');
+    const skillFileNameText = document.getElementById('skillFileNameText');
+    const skillCharCount    = document.getElementById('skillCharCount');
+
+    const ALLOWED_EXTS = ['.txt', '.md', '.markdown', '.text', '.prompt', '.system', '.json'];
+
+    function updateCharCount() {
+        const n = skillInstructions.value.length;
+        skillCharCount.textContent = n.toLocaleString() + ' chars';
+        skillCharCount.style.color = n > 80000 ? '#dc3545' : '#6c757d';
+    }
+
+    function applyFile(file) {
+        const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+        if (!ALLOWED_EXTS.includes(ext)) {
+            document.getElementById('skillModalErrorText').textContent =
+                `Unsupported file type "${ext}". Allowed: ${ALLOWED_EXTS.join(', ')}`;
+            document.getElementById('skillModalError').classList.remove('d-none');
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = evt => {
+            skillInstructions.value = evt.target.result;
+            updateCharCount();
+            // Show badge with filename
+            skillFileNameText.textContent = file.name;
+            skillFileBadge.classList.remove('d-none');
+            // Auto-fill Name from filename if the field is still empty
+            const nameEl = document.getElementById('skillName');
+            if (!nameEl.value.trim()) {
+                const base = file.name
+                    .replace(/\.[^.]+$/, '')        // remove extension
+                    .replace(/[-_]/g, ' ')           // dashes/underscores → spaces
+                    .trim();
+                nameEl.value = base.charAt(0).toUpperCase() + base.slice(1);
+            }
+        };
+        reader.onerror = () => {
+            document.getElementById('skillModalErrorText').textContent = 'Could not read the file.';
+            document.getElementById('skillModalError').classList.remove('d-none');
+        };
+        reader.readAsText(file, 'UTF-8');
+        skillFileInput.value = ''; // reset so the same file can be re-selected
+    }
+
+    window.clearSkillFileBadge = () => skillFileBadge.classList.add('d-none');
+
+    skillFileInput.addEventListener('change', e => {
+        if (e.target.files[0]) applyFile(e.target.files[0]);
+    });
+
+    skillInstructions.addEventListener('input', updateCharCount);
+
+    // ── drag-and-drop onto the textarea ───────────────────────────────────────
+    let dragCounter = 0; // track nested dragenter/dragleave
+
+    skillDropZone.addEventListener('dragenter', e => {
+        e.preventDefault();
+        dragCounter++;
+        skillDropOverlay.classList.remove('d-none');
+        skillInstructions.classList.add('drag-over');
+    });
+
+    skillDropZone.addEventListener('dragover', e => { e.preventDefault(); });
+
+    skillDropZone.addEventListener('dragleave', () => {
+        dragCounter--;
+        if (dragCounter <= 0) {
+            dragCounter = 0;
+            skillDropOverlay.classList.add('d-none');
+            skillInstructions.classList.remove('drag-over');
+        }
+    });
+
+    skillDropZone.addEventListener('drop', e => {
+        e.preventDefault();
+        dragCounter = 0;
+        skillDropOverlay.classList.add('d-none');
+        skillInstructions.classList.remove('drag-over');
+        const file = e.dataTransfer.files[0];
+        if (file) applyFile(file);
+    });
+
+    // ── reset file state when modal opens ────────────────────────────────────
+    function resetSkillFileState() {
+        skillFileBadge.classList.add('d-none');
+        skillFileInput.value = '';
+        dragCounter = 0;
+        skillDropOverlay.classList.add('d-none');
+        skillInstructions.classList.remove('drag-over');
+    }
+
+    window.openAddSkillModal = function () {
+        document.getElementById('skillModalLabel').textContent = 'Add Skill';
+        document.getElementById('skillModalError').classList.add('d-none');
+        document.getElementById('skillId').value           = '';
+        document.getElementById('skillIcon').value         = '⚡';
+        document.getElementById('skillName').value         = '';
+        document.getElementById('skillDescription').value  = '';
+        document.getElementById('skillInstructions').value = '';
+        document.getElementById('skillIsActive').checked   = true;
+        resetSkillFileState();
+        updateCharCount();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('skillModal')).show();
+        setTimeout(() => document.getElementById('skillName').focus(), 300);
+    };
+
+    window.openEditSkillModal = function (btn) {
+        const d = btn.dataset;
+        document.getElementById('skillModalLabel').textContent = 'Edit Skill';
+        document.getElementById('skillModalError').classList.add('d-none');
+        document.getElementById('skillId').value           = d.skillId;
+        document.getElementById('skillIcon').value         = d.skillIcon;
+        document.getElementById('skillName').value         = d.skillName;
+        document.getElementById('skillDescription').value  = d.skillDescription;
+        document.getElementById('skillInstructions').value = d.skillInstructions;
+        document.getElementById('skillIsActive').checked   = (d.skillActive === 'True');
+        resetSkillFileState();
+        updateCharCount();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('skillModal')).show();
+    };
+
+    window.confirmDeleteSkill = function (id, name) {
+        if (!confirm(`Delete skill "${name}"?\n\nThis cannot be undone.`)) return;
+        document.getElementById('skillDeleteId').value = id;
+        document.getElementById('skillDeleteForm').submit();
+    };
+
+    // ── Skill modal AJAX submit ────────────────────────────────────────────────
+    document.getElementById('skillForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const form = this;
+        const btn  = document.getElementById('skillSaveBtn');
+        const orig = btn.innerHTML;
+
+        document.getElementById('skillModalError').classList.add('d-none');
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+        btn.disabled = true;
+
+        try {
+            const resp = await fetch(form.action, { method: 'POST', body: new FormData(form) });
+            let result;
+            try { result = await resp.json(); }
+            catch { result = { success: false, error: `Server error (HTTP ${resp.status}).` }; }
+
+            if (result.success) {
+                bootstrap.Modal.getInstance(document.getElementById('skillModal'))?.hide();
+                setTimeout(() => location.reload(), 300);
+            } else {
+                document.getElementById('skillModalErrorText').textContent = result.error ?? 'Unknown error.';
+                document.getElementById('skillModalError').classList.remove('d-none');
+            }
+        } catch {
+            document.getElementById('skillModalErrorText').textContent = 'Network error — please try again.';
+            document.getElementById('skillModalError').classList.remove('d-none');
+        } finally {
+            btn.innerHTML = orig;
+            btn.disabled = false;
+        }
+    });
+
+    // ── MCP modal: AJAX submit ────────────────────────────────────────────────
+    // Using fetch() instead of native form submit avoids all ModelState /
+    // antiforgery edge-cases that occur when a partial form (modal only) posts
+    // to a page that also has other [BindProperty] fields with [Required].
+    document.getElementById('mcpForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+
+        const form    = this;
+        const saveBtn = form.querySelector('[type="submit"]');
+        const origHtml = saveBtn.innerHTML;
+
+        // Clear previous error
+        document.getElementById('mcpModalError').classList.add('d-none');
+
+        // Show spinner
+        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+        saveBtn.disabled = true;
+
+        try {
+            // FormData carries the __RequestVerificationToken hidden field automatically
+            const resp = await fetch(form.action, {
+                method: 'POST',
+                body: new FormData(form)
+            });
+
+            let result;
+            try { result = await resp.json(); }
+            catch { result = { success: false, error: `Server error (HTTP ${resp.status}).` }; }
+
+            if (result.success) {
+                bootstrap.Modal.getInstance(document.getElementById('mcpModal'))?.hide();
+                // Brief pause so the modal close animation completes, then reload
+                setTimeout(() => location.reload(), 300);
+            } else {
+                document.getElementById('mcpModalErrorText').textContent = result.error ?? 'Unknown error.';
+                document.getElementById('mcpModalError').classList.remove('d-none');
+            }
+        } catch (err) {
+            document.getElementById('mcpModalErrorText').textContent = 'Network error — please try again.';
+            document.getElementById('mcpModalError').classList.remove('d-none');
+        } finally {
+            saveBtn.innerHTML = origHtml;
+            saveBtn.disabled = false;
+        }
+    });
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // RAG MODAL
+    // ══════════════════════════════════════════════════════════════════════════
+
+    // ── source-type tabs ──────────────────────────────────────────────────────
+    window.setRagSource = function (type) {
+        document.getElementById('ragSourceType').value = type;
+        document.getElementById('ragPanelText').style.display = type === 'text' ? '' : 'none';
+        document.getElementById('ragPanelFile').style.display = type === 'file' ? '' : 'none';
+        document.getElementById('ragTabText').classList.toggle('active', type === 'text');
+        document.getElementById('ragTabFile').classList.toggle('active', type === 'file');
+    };
+
+    // ── RAG text-mode: drag-and-drop file loading (client-side, like Skills) ──
+    const ragContent       = document.getElementById('ragContent');
+    const ragTextFileInput = document.getElementById('ragTextFileInput');
+    const ragTextDropZone  = document.getElementById('ragTextDropZone');
+    const ragTextOverlay   = document.getElementById('ragTextDropOverlay');
+    const ragCharCount     = document.getElementById('ragCharCount');
+    const RAG_ALLOWED      = ['.txt','.md','.markdown','.text','.csv','.prompt'];
+
+    function updateRagCharCount() {
+        ragCharCount.textContent = ragContent.value.length.toLocaleString() + ' chars';
+    }
+
+    function loadRagTextFile(file) {
+        const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+        if (!RAG_ALLOWED.includes(ext)) {
+            document.getElementById('ragModalErrorText').textContent =
+                `Unsupported type "${ext}". Use ${RAG_ALLOWED.join(', ')}`;
+            document.getElementById('ragModalError').classList.remove('d-none');
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = e => {
+            ragContent.value = e.target.result;
+            updateRagCharCount();
+            document.getElementById('ragTextFileNameText').textContent = file.name;
+            document.getElementById('ragTextFileBadge').classList.remove('d-none');
+            const nameEl = document.getElementById('ragName');
+            if (!nameEl.value.trim()) {
+                const base = file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ').trim();
+                nameEl.value = base.charAt(0).toUpperCase() + base.slice(1);
+            }
+        };
+        reader.readAsText(file, 'UTF-8');
+        ragTextFileInput.value = '';
+    }
+
+    ragTextFileInput.addEventListener('change', e => { if (e.target.files[0]) loadRagTextFile(e.target.files[0]); });
+    ragContent.addEventListener('input', updateRagCharCount);
+
+    let ragTextDragCounter = 0;
+    ragTextDropZone.addEventListener('dragenter', e => {
+        e.preventDefault(); ragTextDragCounter++;
+        ragTextOverlay.classList.remove('d-none');
+    });
+    ragTextDropZone.addEventListener('dragover', e => e.preventDefault());
+    ragTextDropZone.addEventListener('dragleave', () => {
+        if (--ragTextDragCounter <= 0) { ragTextDragCounter = 0; ragTextOverlay.classList.add('d-none'); }
+    });
+    ragTextDropZone.addEventListener('drop', e => {
+        e.preventDefault(); ragTextDragCounter = 0;
+        ragTextOverlay.classList.add('d-none');
+        if (e.dataTransfer.files[0]) loadRagTextFile(e.dataTransfer.files[0]);
+    });
+
+    // ── RAG file-mode: drop zone visual feedback ──────────────────────────────
+    const ragFileInput      = document.getElementById('ragFileInput');
+    const ragFileDropZone   = document.getElementById('ragFileDropZone');
+    const ragFileDropContent= document.getElementById('ragFileDropContent');
+    const ragFileSelectedInfo=document.getElementById('ragFileSelectedInfo');
+
+    function showRagSelectedFile(file) {
+        ragFileDropContent.classList.add('d-none');
+        ragFileSelectedInfo.classList.remove('d-none');
+        document.getElementById('ragSelectedFileName').textContent = file.name;
+        document.getElementById('ragSelectedFileSize').textContent =
+            file.size > 1024 * 1024
+                ? (file.size / 1024 / 1024).toFixed(1) + ' MB'
+                : (file.size / 1024).toFixed(0) + ' KB';
+    }
+
+    ragFileInput.addEventListener('change', e => { if (e.target.files[0]) showRagSelectedFile(e.target.files[0]); });
+
+    let ragFileDragCounter = 0;
+    ragFileDropZone.addEventListener('dragenter', e => {
+        e.preventDefault(); ragFileDragCounter++;
+        ragFileDropZone.classList.add('border-primary');
+    });
+    ragFileDropZone.addEventListener('dragover', e => e.preventDefault());
+    ragFileDropZone.addEventListener('dragleave', () => {
+        if (--ragFileDragCounter <= 0) { ragFileDragCounter = 0; ragFileDropZone.classList.remove('border-primary'); }
+    });
+    ragFileDropZone.addEventListener('drop', e => {
+        e.preventDefault(); ragFileDragCounter = 0;
+        ragFileDropZone.classList.remove('border-primary');
+        const file = e.dataTransfer.files[0];
+        if (file) {
+            // Create a DataTransfer to assign to the input's files
+            const dt = new DataTransfer(); dt.items.add(file);
+            ragFileInput.files = dt.files;
+            showRagSelectedFile(file);
+        }
+    });
+
+    // ── modal open helpers ────────────────────────────────────────────────────
+    function resetRagModal() {
+        document.getElementById('ragModalError').classList.add('d-none');
+        document.getElementById('ragId').value          = '';
+        document.getElementById('ragName').value        = '';
+        document.getElementById('ragDescription').value = '';
+        ragContent.value = ''; updateRagCharCount();
+        ragTextFileInput.value = '';
+        document.getElementById('ragTextFileBadge').classList.add('d-none');
+        // reset file-mode
+        ragFileInput.value = '';
+        ragFileDropContent.classList.remove('d-none');
+        ragFileSelectedInfo.classList.add('d-none');
+        ragFileDropZone.classList.remove('border-primary');
+        document.getElementById('ragExistingInfo').classList.add('d-none');
+        document.getElementById('ragEnabled').checked = true;
+        setRagSource('text');
+    }
+
+    window.openAddRagModal = function () {
+        resetRagModal();
+        document.getElementById('ragModalLabel').textContent = 'Add RAG Document';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('ragModal')).show();
+        setTimeout(() => document.getElementById('ragName').focus(), 300);
+    };
+
+    window.openEditRagModal = async function (id, name, description, existingFile, chunkCount, enabled) {
+        resetRagModal();
+        document.getElementById('ragModalLabel').textContent = 'Edit RAG Document';
+        document.getElementById('ragId').value          = id;
+        document.getElementById('ragName').value        = name;
+        document.getElementById('ragDescription').value = description;
+        document.getElementById('ragEnabled').checked   = (enabled === 'True');
+
+        // Show existing file info in the upload panel
+        if (existingFile) {
+            document.getElementById('ragExistingFile').textContent   = existingFile;
+            document.getElementById('ragExistingChunks').textContent = chunkCount;
+            document.getElementById('ragExistingInfo').classList.remove('d-none');
+        }
+
+        // Always switch to paste-text tab and load the saved content into the textarea
+        setRagSource('text');
+        ragContent.value = '';
+        ragContent.placeholder = 'Loading saved content…';
+        ragContent.disabled = true;
+        updateRagCharCount();
+
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('ragModal')).show();
+
+        // Fetch saved content.txt from the server
+        try {
+            const resp = await fetch(`?handler=RagContent&id=${encodeURIComponent(id)}`);
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data.found) {
+                    ragContent.value = data.content ?? '';
+                } else {
+                    ragContent.value = '';
+                    ragContent.placeholder = 'No saved content found — paste new text or upload a file.';
+                }
+            }
+        } catch {
+            ragContent.placeholder = 'Could not load saved content.';
+        } finally {
+            ragContent.disabled = false;
+            updateRagCharCount();
+        }
+    };
+
+    window.confirmDeleteRag = function (id, name) {
+        if (!confirm(`Delete RAG document "${name}"?\n\nThis also removes all stored embeddings and cannot be undone.`)) return;
+        document.getElementById('ragDeleteId').value = id;
+        document.getElementById('ragDeleteForm').submit();
+    };
+
+    // ── RAG form: AJAX submit ─────────────────────────────────────────────────
+    document.getElementById('ragForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const form = this;
+        const btn  = document.getElementById('ragSaveBtn');
+        const orig = btn.innerHTML;
+
+        document.getElementById('ragModalError').classList.add('d-none');
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Processing…';
+        btn.disabled = true;
+
+        try {
+            const resp = await fetch(form.action, { method: 'POST', body: new FormData(form) });
+            let result;
+            try { result = await resp.json(); }
+            catch { result = { success: false, error: `Server error (HTTP ${resp.status}).` }; }
+
+            if (result.success) {
+                bootstrap.Modal.getInstance(document.getElementById('ragModal'))?.hide();
+                if (result.warning) {
+                    // Show a page-level warning banner, then reload after a short pause
+                    const banner = document.createElement('div');
+                    banner.className = 'alert alert-warning alert-dismissible d-flex align-items-start gap-2 mb-4';
+                    banner.innerHTML =
+                        `⚠️ <span>${result.message}<br><small class="d-block mt-1">${result.warning}</small></span>` +
+                        `<button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>`;
+                    document.querySelector('.container, main, body > *').prepend(banner);
+                    setTimeout(() => location.reload(), 5000);
+                } else {
+                    setTimeout(() => location.reload(), 300);
+                }
+            } else {
+                document.getElementById('ragModalErrorText').textContent = result.error ?? 'Unknown error.';
+                document.getElementById('ragModalError').classList.remove('d-none');
+            }
+        } catch {
+            document.getElementById('ragModalErrorText').textContent = 'Network error — please try again.';
+            document.getElementById('ragModalError').classList.remove('d-none');
+        } finally {
+            btn.innerHTML = orig;
+            btn.disabled = false;
+        }
+    });
+
+    // ── RAG: re-embed ─────────────────────────────────────────────────────────
+    window.reembedRag = async function (id, name) {
+        if (!confirm(`Re-generate embeddings for "${name}"?\n\nThis calls the Gemini embedding API for every chunk. Make sure your API key is working.`)) return;
+
+        const btn  = document.getElementById('reembed_' + id);
+        const orig = btn?.innerHTML ?? '🔄';
+        if (btn) { btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; btn.disabled = true; }
+
+        try {
+            const fd = new FormData(document.getElementById('ragReembedForm'));
+            document.getElementById('ragReembedId').value = id;
+            // rebuild FormData after setting the id
+            const fd2 = new FormData(document.getElementById('ragReembedForm'));
+            const resp = await fetch('?handler=ReembedRag', { method: 'POST', body: fd2 });
+            let result;
+            try { result = await resp.json(); }
+            catch { result = { success: false, error: `Server error (HTTP ${resp.status}).` }; }
+
+            if (result.success) {
+                alert(result.message);
+                location.reload();
+            } else {
+                alert('Re-embedding failed:\n\n' + result.error);
+            }
+        } catch {
+            alert('Network error during re-embedding.');
+        } finally {
+            if (btn) { btn.innerHTML = orig; btn.disabled = false; }
+        }
+    };
+
+    // ── RAG: embedding health badges ──────────────────────────────────────────
+    // For each row in the RAG table, fetch the chunk/embedding counts and update
+    // the badge colour: green = fully embedded, amber = partial, red = none.
+    document.querySelectorAll('.rag-chunk-badge[data-doc-id]').forEach(async badge => {
+        const id = badge.dataset.docId;
+        try {
+            const resp = await fetch(`?handler=RagStatus&id=${encodeURIComponent(id)}`);
+            if (!resp.ok) return;
+            const { total, embedded } = await resp.json();
+            if (total === 0) {
+                badge.className = 'badge bg-warning text-dark rag-chunk-badge';
+                badge.title = 'No chunks on disk — re-save the document.';
+            } else if (embedded === 0) {
+                badge.className = 'badge bg-danger rag-chunk-badge';
+                badge.title = `${total} chunks stored but 0 embedded — embedding API may be unavailable. Keyword search is active as fallback.`;
+                badge.textContent = `${total} ⚠️`;
+            } else if (embedded < total) {
+                badge.className = 'badge bg-warning text-dark rag-chunk-badge';
+                badge.title = `${embedded} / ${total} chunks embedded — partial. Keyword search covers the rest.`;
+                badge.textContent = `${embedded}/${total}`;
+            } else {
+                badge.className = 'badge bg-success rag-chunk-badge';
+                badge.title = `${embedded} chunks fully embedded ✅`;
+                badge.textContent = `${embedded} ✅`;
+            }
+        } catch { /* leave the default badge */ }
+    });
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // MEMORY MODAL
+    // ══════════════════════════════════════════════════════════════════════════
+
+    window.openAddMemoryModal = function () {
+        document.getElementById('memoryModalLabel').textContent = 'Add Memory';
+        document.getElementById('memModalError').classList.add('d-none');
+        document.getElementById('memInputId').value          = '';
+        document.getElementById('memInputContent').value     = '';
+        document.getElementById('memInputCategory').value    = '';
+        document.getElementById('memInputImportance').value  = '3';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('memoryModal')).show();
+        setTimeout(() => document.getElementById('memInputContent').focus(), 300);
+    };
+
+    window.openEditMemoryModal = function (btn) {
+        const d = btn.dataset;
+        document.getElementById('memoryModalLabel').textContent = 'Edit Memory';
+        document.getElementById('memModalError').classList.add('d-none');
+        document.getElementById('memInputId').value         = d.memId;
+        document.getElementById('memInputContent').value    = d.memContent;
+        document.getElementById('memInputCategory').value   = d.memCategory;
+        document.getElementById('memInputImportance').value = d.memImportance;
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('memoryModal')).show();
+    };
+
+    window.confirmDeleteMemory = async function (id) {
+        if (!confirm('Delete this memory?\n\nThe agent will no longer use it in future sessions.')) return;
+        const form = document.getElementById('memDeleteForm');
+        document.getElementById('memDeleteId').value = id;
+        try {
+            const resp = await fetch('?handler=DeleteMemory', { method: 'POST', body: new FormData(form) });
+            const data = await resp.json();
+            if (data.success) location.reload();
+        } catch {
+            alert('Failed to delete memory — please try again.');
+        }
+    };
+
+    window.bulkDeleteMemory = async function (period) {
+        const labels = {
+            yesterday: 'yesterday',
+            '7d':  'the last 7 days',
+            '15d': 'the last 15 days',
+            '30d': 'the last 30 days',
+            all:   'ALL memories'
+        };
+        const label = labels[period] ?? period;
+        if (!confirm(`Delete memories from ${label}?\n\nThis cannot be undone.`)) return;
+
+        const form = document.getElementById('memDeleteForm');
+        const fd   = new FormData(form);
+        fd.append('period', period);
+
+        try {
+            const resp = await fetch('?handler=BulkDeleteMemory', { method: 'POST', body: fd });
+            const data = await resp.json();
+            if (data.success) {
+                if (data.count > 0) { location.reload(); }
+                else { alert('No matching memories found.'); }
+            }
+        } catch {
+            alert('Failed to delete memories — please try again.');
+        }
+    };
+
+    document.getElementById('memoryForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const btn  = document.getElementById('memSaveBtn');
+        const orig = btn.innerHTML;
+        document.getElementById('memModalError').classList.add('d-none');
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+        btn.disabled  = true;
+
+        try {
+            const resp   = await fetch(this.action, { method: 'POST', body: new FormData(this) });
+            const result = await resp.json();
+            if (result.success) {
+                bootstrap.Modal.getInstance(document.getElementById('memoryModal'))?.hide();
+                setTimeout(() => location.reload(), 250);
+            } else {
+                document.getElementById('memModalErrorText').textContent = result.error ?? 'Unknown error.';
+                document.getElementById('memModalError').classList.remove('d-none');
+            }
+        } catch {
+            document.getElementById('memModalErrorText').textContent = 'Network error — please try again.';
+            document.getElementById('memModalError').classList.remove('d-none');
+        } finally {
+            btn.innerHTML = orig;
+            btn.disabled  = false;
+        }
+    });
+
+    // ── Database Connections ──────────────────────────────────────────────────
+
+    const DB_PROVIDER_HINTS = {
+        SqlServer:  'e.g. Server=HOST;Database=DB;User Id=sa;Password=…;TrustServerCertificate=True;',
+        AzureSQL:   'e.g. Server=host.database.windows.net;Database=DB;Authentication=Active Directory Default;Encrypt=True;',
+        PostgreSQL: 'e.g. Host=HOST;Database=DB;Username=user;Password=…;SslMode=Require;',
+        MySQL:      'e.g. Server=HOST;Database=DB;User=user;Password=…;SslMode=Required;',
+        MariaDB:    'e.g. Server=HOST;Database=DB;User=user;Password=…;',
+        Oracle:     'e.g. User Id=user;Password=\u2026;Data Source=HOST:1521/ORCL;  (use :param in queries, not @@param)',
+    };
+
+    window.updateDbConnProviderHint = function () {
+        const provider = document.getElementById('dbConnProvider').value;
+        document.getElementById('dbConnProviderHint').textContent = DB_PROVIDER_HINTS[provider] ?? '';
+    };
+
+    window.toggleDbConnStrVis = function (btn) {
+        const inp  = document.getElementById('dbConnStr');
+        const hide = inp.type === 'password';
+        inp.type       = hide ? 'text' : 'password';
+        btn.textContent = hide ? '🙈' : '👁';
+    };
+
+    function clearDbConnModal() {
+        document.getElementById('dbConnModalError').classList.add('d-none');
+        document.getElementById('dbConnModalSuccess').classList.add('d-none');
+        document.getElementById('dbConnId').value        = '';
+        document.getElementById('dbConnId').readOnly     = false;
+        document.getElementById('dbConnLabel').value     = '';
+        document.getElementById('dbConnProvider').value  = 'SqlServer';
+        document.getElementById('dbConnStr').value       = '';
+        document.getElementById('dbConnStr').type        = 'password';
+        document.getElementById('dbConnMaxRows').value   = '500';
+        document.getElementById('dbConnSchemas').value   = '';
+        document.getElementById('dbConnReadOnly').checked = true;
+        document.getElementById('dbConnEnabled').checked  = true;
+        updateDbConnProviderHint();
+    }
+
+    window.openAddDbConnModal = function () {
+        document.getElementById('dbConnModalLabel').textContent = 'Add Database Connection';
+        clearDbConnModal();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('dbConnModal')).show();
+    };
+
+    window.openEditDbConnModal = function (id, label, provider, connStr, enabled, readOnly, maxRows, schemas) {
+        document.getElementById('dbConnModalLabel').textContent = 'Edit Database Connection';
+        document.getElementById('dbConnModalError').classList.add('d-none');
+        document.getElementById('dbConnModalSuccess').classList.add('d-none');
+        document.getElementById('dbConnId').value       = id;
+        document.getElementById('dbConnId').readOnly    = true;   // can't rename existing key
+        document.getElementById('dbConnLabel').value    = label;
+        document.getElementById('dbConnProvider').value = provider;
+        document.getElementById('dbConnStr').value      = connStr;
+        document.getElementById('dbConnStr').type       = 'password';
+        document.getElementById('dbConnMaxRows').value  = maxRows;
+        document.getElementById('dbConnSchemas').value  = schemas;
+        document.getElementById('dbConnReadOnly').checked = (readOnly === 'True');
+        document.getElementById('dbConnEnabled').checked  = (enabled === 'True');
+        updateDbConnProviderHint();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('dbConnModal')).show();
+    };
+
+    window.confirmDeleteDbConn = function (id) {
+        if (!confirm(`Delete database connection "${id}"?\n\nThis cannot be undone.`)) return;
+        document.getElementById('dbConnDeleteId').value = id;
+        document.getElementById('dbConnDeleteForm').submit();
+    };
+
+    // AJAX save
+    document.getElementById('dbConnForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const btn  = document.getElementById('dbConnSaveBtn');
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+        btn.disabled  = true;
+
+        document.getElementById('dbConnModalError').classList.add('d-none');
+        document.getElementById('dbConnModalSuccess').classList.add('d-none');
+
+        try {
+            const fd  = new FormData(this);
+            const res = await fetch('?handler=SaveDbConn', { method: 'POST', body: fd });
+            const data = await res.json();
+
+            if (data.success) {
+                document.getElementById('dbConnModalSuccessText').textContent = data.message;
+                document.getElementById('dbConnModalSuccess').classList.remove('d-none');
+                setTimeout(() => window.location.reload(), 900);
+            } else {
+                document.getElementById('dbConnModalErrorText').textContent = data.error ?? 'Save failed.';
+                document.getElementById('dbConnModalError').classList.remove('d-none');
+            }
+        } catch {
+            document.getElementById('dbConnModalErrorText').textContent = 'Network error — please try again.';
+            document.getElementById('dbConnModalError').classList.remove('d-none');
+        } finally {
+            btn.innerHTML = orig;
+            btn.disabled  = false;
+        }
+    });
+
+    // Test connection from the table row (existing saved connection)
+    window.testDbConn = async function (id, btn) {
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        btn.disabled  = true;
+        try {
+            const res  = await fetch(`?handler=TestDbConn&id=${encodeURIComponent(id)}`);
+            const data = await res.json();
+            if (data.success) {
+                btn.innerHTML = '✅';
+                btn.title = data.message;
+            } else {
+                btn.innerHTML = '❌';
+                btn.title = data.error;
+            }
+        } catch {
+            btn.innerHTML = '❌';
+            btn.title = 'Network error';
+        } finally {
+            btn.disabled = false;
+            setTimeout(() => { btn.innerHTML = orig; btn.title = 'Test connection'; }, 4000);
+        }
+    };
+
+    // Test connection from inside the modal (uses the live form values, not a saved ID)
+    window.testDbConnFromModal = async function () {
+        const btn  = document.getElementById('dbConnTestBtn');
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Testing…';
+        btn.disabled  = true;
+        document.getElementById('dbConnModalError').classList.add('d-none');
+        document.getElementById('dbConnModalSuccess').classList.add('d-none');
+
+        // Save temporarily so we can call the real test endpoint with a valid ID
+        const fd  = new FormData(document.getElementById('dbConnForm'));
+        try {
+            const saveRes  = await fetch('?handler=SaveDbConn', { method: 'POST', body: fd });
+            const saveData = await saveRes.json();
+            if (!saveData.success) throw new Error(saveData.error ?? 'Save failed.');
+
+            const testId  = document.getElementById('dbConnId').value.trim().toLowerCase().replace(/\s+/g, '-');
+            const testRes  = await fetch(`?handler=TestDbConn&id=${encodeURIComponent(testId)}`);
+            const testData = await testRes.json();
+
+            if (testData.success) {
+                document.getElementById('dbConnModalSuccessText').textContent = '✅ ' + testData.message;
+                document.getElementById('dbConnModalSuccess').classList.remove('d-none');
+            } else {
+                throw new Error(testData.error);
+            }
+        } catch (err) {
+            document.getElementById('dbConnModalErrorText').textContent = err.message;
+            document.getElementById('dbConnModalError').classList.remove('d-none');
+        } finally {
+            btn.innerHTML = orig;
+            btn.disabled  = false;
+        }
+    };
+
+})();
+</script>
+
+<script>
+// ── Flat-file data sources ─────────────────────────────────────────────────
+(function () {
+
+    function clearFfModal() {
+        document.getElementById('ffId').value             = '';
+        document.getElementById('ffLabel').value          = '';
+        document.getElementById('ffFormat').value         = '0';
+        document.getElementById('ffFile').value           = '';
+        document.getElementById('ffCurrentFile').classList.add('d-none');
+        document.getElementById('ffCurrentFileName').textContent = '';
+        document.getElementById('ffFileRequired').style.display  = '';
+        document.getElementById('ffDelimiter').value      = '';
+        document.getElementById('ffSheet').value          = '';
+        document.getElementById('ffEncoding').value       = 'UTF-8';
+        document.getElementById('ffMaxRows').value        = '1000';
+        document.getElementById('ffHeaders').checked      = true;
+        document.getElementById('ffEnabled').checked      = true;
+        document.getElementById('ffFixedWidthSpec').value = '';
+        document.getElementById('ffModalError').classList.add('d-none');
+        document.getElementById('ffModalSuccess').classList.add('d-none');
+        onFfFormatChange();
+    }
+
+    window.onFfFormatChange = function () {
+        const fmt = parseInt(document.getElementById('ffFormat').value);
+        // 0=CSV, 1=Tab, 2=Excel, 3=JSON, 4=XML, 5=YAML, 6=FixedWidth
+        const isDelimited  = fmt === 0 || fmt === 1;
+        const isExcel      = fmt === 2;
+        const isFixedWidth = fmt === 6;
+        const hasHeadersFmt= fmt !== 3 && fmt !== 4 && fmt !== 5; // JSON/XML/YAML have no header row concept
+
+        document.getElementById('ffDelimiterGroup').style.display  = isDelimited  ? '' : 'none';
+        document.getElementById('ffSheetGroup').style.display       = isExcel      ? '' : 'none';
+        document.getElementById('ffFixedWidthGroup').style.display  = isFixedWidth ? '' : 'none';
+        document.getElementById('ffHeadersGroup').style.display     = hasHeadersFmt ? '' : 'none';
+    };
+
+    window.openAddFlatFileModal = function () {
+        clearFfModal();
+        document.getElementById('ffModalLabel').textContent = 'Add Data Source';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('ffModal')).show();
+        setTimeout(() => document.getElementById('ffLabel').focus(), 300);
+    };
+
+    window.openEditFlatFileModal = async function (id) {
+        clearFfModal();
+        document.getElementById('ffModalLabel').textContent = 'Edit Data Source';
+        document.getElementById('ffSaveBtn').innerHTML =
+            '<span class="spinner-border spinner-border-sm me-1"></span>Loading…';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('ffModal')).show();
+
+        try {
+            const res = await fetch(`/api/flatfile/source/${encodeURIComponent(id)}`);
+            if (!res.ok) throw new Error('Could not load source.');
+            const s = await res.json();
+
+            document.getElementById('ffId').value            = s.id;
+            document.getElementById('ffLabel').value         = s.label;
+            document.getElementById('ffFormat').value        = String(s.format);
+            document.getElementById('ffDelimiter').value     = s.delimiter ?? '';
+            document.getElementById('ffSheet').value         = s.sheetName ?? '';
+            document.getElementById('ffEncoding').value      = s.encoding ?? 'UTF-8';
+            document.getElementById('ffMaxRows').value       = s.maxRows ?? 1000;
+            document.getElementById('ffHeaders').checked     = s.hasHeaders;
+            document.getElementById('ffEnabled').checked     = s.isEnabled;
+            document.getElementById('ffFixedWidthSpec').value= (s.fixedWidthColumns ?? []).join('\n');
+
+            // Show existing filename — upload is optional when editing
+            if (s.filePath) {
+                const name = s.filePath.split(/[\\/]/).pop();
+                document.getElementById('ffCurrentFileName').textContent = name;
+                document.getElementById('ffCurrentFile').classList.remove('d-none');
+                document.getElementById('ffFileRequired').style.display  = 'none';
+            }
+
+            onFfFormatChange();
+        } catch (err) {
+            document.getElementById('ffModalErrorText').textContent = err.message;
+            document.getElementById('ffModalError').classList.remove('d-none');
+        } finally {
+            document.getElementById('ffSaveBtn').innerHTML = '💾 Save';
+        }
+    };
+
+    window.confirmDeleteFlatFile = function (id, label) {
+        if (!confirm(`Delete data source "${label}"?\n\nThis cannot be undone.`)) return;
+        document.getElementById('ffDeleteId').value = id;
+        document.getElementById('ffDeleteForm').submit();
+    };
+
+    window.previewFlatFile = async function (id, btn) {
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        btn.disabled  = true;
+
+        document.getElementById('ffPreviewTitle').textContent = `Preview — ${id}`;
+        const body = document.getElementById('ffPreviewBody');
+        body.innerHTML = '<div class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Loading…</div>';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('ffPreviewModal')).show();
+
+        try {
+            const res  = await fetch(`?handler=PreviewFlatFile&id=${encodeURIComponent(id)}`);
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error ?? 'Preview failed.');
+
+            if (!data.rows?.length) {
+                body.innerHTML = '<p class="text-muted text-center py-4">No rows returned.</p>';
+                return;
+            }
+
+            const cols   = data.columns;
+            const thHtml = cols.map(c => `<th class="text-nowrap small">${escHtml(c)}</th>`).join('');
+            const tbHtml = data.rows.map(row =>
+                '<tr>' + cols.map(c => `<td class="small">${escHtml(row[c] ?? '')}</td>`).join('') + '</tr>'
+            ).join('');
+
+            body.innerHTML =
+                `<p class="px-3 pt-2 mb-1 text-muted small">Showing ${data.rowCount} row(s) (first 10)</p>` +
+                `<div class="table-responsive"><table class="table table-sm table-bordered mb-0">` +
+                `<thead class="table-light"><tr>${thHtml}</tr></thead><tbody>${tbHtml}</tbody></table></div>`;
+        } catch (err) {
+            body.innerHTML = `<div class="alert alert-danger m-3 py-2">${escHtml(err.message)}</div>`;
+        } finally {
+            btn.innerHTML = orig;
+            btn.disabled  = false;
+        }
+    };
+
+    function escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // AJAX save
+    document.getElementById('ffForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const btn  = document.getElementById('ffSaveBtn');
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+        btn.disabled  = true;
+        document.getElementById('ffModalError').classList.add('d-none');
+        document.getElementById('ffModalSuccess').classList.add('d-none');
+
+        try {
+            const res  = await fetch('?handler=SaveFlatFile', { method: 'POST', body: new FormData(this) });
+            const data = await res.json();
+            if (data.success) {
+                document.getElementById('ffModalSuccessText').textContent = data.message;
+                document.getElementById('ffModalSuccess').classList.remove('d-none');
+                setTimeout(() => window.location.reload(), 900);
+            } else {
+                document.getElementById('ffModalErrorText').textContent = data.error ?? 'Save failed.';
+                document.getElementById('ffModalError').classList.remove('d-none');
+            }
+        } catch {
+            document.getElementById('ffModalErrorText').textContent = 'Network error — please try again.';
+            document.getElementById('ffModalError').classList.remove('d-none');
+        } finally {
+            btn.innerHTML = orig;
+            btn.disabled  = false;
+        }
+    });
+
+    // Auto-detect format and auto-fill label from the chosen file
+    document.getElementById('ffFile').addEventListener('change', function () {
+        const file = this.files?.[0];
+        if (!file) return;
+
+        const ext = file.name.split('.').pop().toLowerCase();
+        const FMT = { csv: '0', tsv: '1', xlsx: '2', xls: '2', json: '3', xml: '4', yaml: '5', yml: '5' };
+        if (FMT[ext] !== undefined) {
+            document.getElementById('ffFormat').value = FMT[ext];
+            onFfFormatChange();
+        }
+
+        // Auto-fill label from filename (strip extension) if the label is still empty
+        const labelEl = document.getElementById('ffLabel');
+        if (!labelEl.value.trim()) {
+            labelEl.value = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+        }
+    });
+
+    // init format-dependent field visibility on page load
+    onFfFormatChange();
+
+    // ── Settings tabs ─────────────────────────────────────────────────────────
+    (function () {
+        const panes = document.querySelectorAll('.settings-tab-pane');
+        const btns  = document.querySelectorAll('#settingsTabs [data-tab]');
+
+        function activateTab(id) {
+            btns.forEach(b  => b.classList.toggle('active', b.dataset.tab === id));
+            panes.forEach(p => p.style.display = (p.id === 'tab-pane-' + id) ? 'block' : 'none');
+            sessionStorage.setItem('settings-tab', id);
+        }
+
+        btns.forEach(b => b.addEventListener('click', () => activateTab(b.dataset.tab)));
+
+        const saved = sessionStorage.getItem('settings-tab');
+        const valid = saved && document.querySelector('[data-tab="' + saved + '"]');
+        activateTab(valid ? saved : 'llm');
+    })();
+
+})();
+</script>
+}

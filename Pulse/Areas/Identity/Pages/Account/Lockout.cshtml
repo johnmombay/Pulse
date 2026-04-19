@@ -1,0 +1,88 @@
+﻿@page
+@model LockoutModel
+@{
+    ViewData["Title"] = "Account locked";
+    var hasEnd    = Model.LockoutEnd.HasValue && Model.LockoutEnd.Value > DateTime.UtcNow;
+    var endIso    = hasEnd ? Model.LockoutEnd!.Value.ToString("O") : null;
+    var hourWord  = Model.LockoutHours == 1 ? "hour" : "hours";
+}
+
+@section Styles {
+<style>
+.bp-auth { display:flex; justify-content:center; padding:2rem 1rem 4rem; }
+.bp-auth-card { width:100%; max-width:440px; background:var(--surface-1); border:1px solid var(--surface-border); border-radius:.9rem; box-shadow:var(--shadow-card-hover); padding:2.25rem 2.25rem 2rem; }
+.bp-auth-divider { border-top:1px solid var(--surface-border); margin-top:1.5rem; padding-top:1.25rem; text-align:center; font-size:.83rem; color:var(--sidebar-text-muted); }
+.bp-auth-divider a { color:var(--brand); font-weight:500; text-decoration:none; }
+.bp-auth-divider a:hover { text-decoration:underline; }
+#lockCountdown { font-size:1.5rem; font-weight:700; font-variant-numeric:tabular-nums; color:var(--page-text); letter-spacing:.03em; }
+</style>
+}
+
+<div class="bp-auth">
+    <div class="bp-auth-card">
+
+        <partial name="_AuthLogo" />
+
+        <div class="mb-4" style="width:2.75rem;height:2.75rem;background:#fee2e2;border-radius:.65rem;display:flex;align-items:center;justify-content:center">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round">
+                <rect x="3" y="11" width="18" height="11" rx="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+        </div>
+
+        <h1 style="font-size:1.45rem;font-weight:700;margin-bottom:.3rem;color:var(--page-text)">Account locked</h1>
+        <p style="font-size:.875rem;color:var(--sidebar-text-muted);margin-bottom:1.25rem">
+            Too many failed sign-in attempts. Your account has been locked for
+            <strong>@Model.LockoutHours @hourWord</strong>.
+        </p>
+
+        @if (hasEnd)
+        {
+            <div class="rounded-3 p-3 mb-4 text-center"
+                 style="background:var(--surface-2);border:1px solid var(--surface-border)">
+                <div class="text-muted small mb-1">You can try again in</div>
+                <div id="lockCountdown">--:--:--</div>
+                <div class="text-muted" style="font-size:.75rem;margin-top:.25rem">
+                    Unlocks at @Model.LockoutEnd!.Value.ToString("HH:mm") UTC
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-warning py-2 px-3 mb-4" style="font-size:.84rem;border-radius:.55rem">
+                Please wait @Model.LockoutHours @hourWord before trying again, or reset your password.
+            </div>
+        }
+
+        <a asp-page="./ForgotPassword"
+           class="w-100 btn btn-primary d-block text-center"
+           style="height:2.75rem;font-weight:600;border-radius:.55rem;font-size:.925rem;line-height:2.75rem;padding:0">
+            &#128273; Reset my password
+        </a>
+
+        <div class="bp-auth-divider">
+            <a asp-page="./Login">&larr; Back to sign in</a>
+        </div>
+
+    </div>
+</div>
+
+@if (hasEnd)
+{
+    <script>
+    (function () {
+        const end = new Date('@Html.Raw(endIso)');
+        const el  = document.getElementById('lockCountdown');
+        function tick() {
+            const diff = Math.max(0, end - Date.now());
+            if (diff === 0) { el.textContent = 'Unlocked — you may try again.'; return; }
+            const h = String(Math.floor(diff / 3600000)).padStart(2,'0');
+            const m = String(Math.floor(diff % 3600000 / 60000)).padStart(2,'0');
+            const s = String(Math.floor(diff % 60000 / 1000)).padStart(2,'0');
+            el.textContent = h + ':' + m + ':' + s;
+            setTimeout(tick, 1000);
+        }
+        tick();
+    })();
+    </script>
+}
