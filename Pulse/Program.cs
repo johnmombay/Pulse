@@ -38,10 +38,26 @@ builder.Services.AddDefaultIdentity<ApplicationUser>(options =>
 		options.Lockout.AllowedForNewUsers      = true;
 	})
 	.AddRoles<IdentityRole>()
-	.AddEntityFrameworkStores<ApplicationDbContext>();
+	.AddEntityFrameworkStores<ApplicationDbContext>()
+	.AddClaimsPrincipalFactory<ApplicationUserClaimsPrincipalFactory>();
+
+builder.Services.AddScoped<ITenantContext, TenantContext>();
 
 // ── MVC + Razor Pages ─────────────────────────────────────────────────────────
 builder.Services.AddControllersWithViews();
+
+builder.Services.AddAuthorization(options =>
+{
+	options.AddPolicy("SuperAdminOnly", policy =>
+		policy.RequireRole("SuperAdmin"));
+
+	options.AddPolicy("TenantAdminOrAbove", policy =>
+		policy.RequireRole("TenantAdmin", "SuperAdmin"));
+
+	options.AddPolicy("TenantMember", policy =>
+		policy.RequireAuthenticatedUser()
+		      .RequireClaim("tid"));
+});
 
 // ── SignalR ───────────────────────────────────────────────────────────────────
 builder.Services.AddSignalR();
@@ -150,7 +166,7 @@ using (var startupScope = app.Services.CreateScope())
 	var roleManager = startupScope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
 	var userManager = startupScope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
 
-	foreach (var role in new[] { "Admin", "User" })
+	foreach (var role in new[] { "SuperAdmin", "TenantAdmin", "TenantUser" })
 	{
 		if (!await roleManager.RoleExistsAsync(role))
 			await roleManager.CreateAsync(new IdentityRole(role));
@@ -168,11 +184,12 @@ using (var startupScope = app.Services.CreateScope())
 			Email          = adminEmail,
 			FirstName      = adminName.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? string.Empty,
 			LastName       = adminName.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries).Skip(1).FirstOrDefault() ?? string.Empty,
-			EmailConfirmed = true
+			EmailConfirmed = true,
+			TenantId       = null,
 		};
 		var result = await userManager.CreateAsync(admin, adminPassword);
 		if (result.Succeeded)
-			await userManager.AddToRoleAsync(admin, "Admin");
+			await userManager.AddToRoleAsync(admin, "SuperAdmin");
 	}
 
 	// Re-register all enabled recurring tasks with Hangfire after restart

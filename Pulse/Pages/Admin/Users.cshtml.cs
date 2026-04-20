@@ -7,7 +7,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Pulse.Pages.Admin;
 
-[Authorize(Roles = "Admin")]
+[Authorize(Policy = "SuperAdminOnly")]
 public class UsersModel(
     UserManager<ApplicationUser> userManager,
     RoleManager<IdentityRole> roleManager) : PageModel

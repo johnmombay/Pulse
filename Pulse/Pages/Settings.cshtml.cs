@@ -9,7 +9,7 @@ using System.Security.Claims;
 
 namespace Pulse.Pages;
 
-[Authorize(Roles = "Admin")]
+[Authorize(Policy = "TenantAdminOrAbove")]
 public class SettingsModel(
     LlmSettingsService settingsService,
     RagService ragService,
