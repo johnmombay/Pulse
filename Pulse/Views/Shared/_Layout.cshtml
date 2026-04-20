@@ -6,6 +6,9 @@
     var _logoVer  = _settings.LogoVersion;
     var _hasLogo  = !string.IsNullOrEmpty(_logoFile);
     var _appName  = _settings.AppName ?? "Pulse";
+    var _logoUrl  = _tenantCtx.TenantId is Guid _tid
+        ? $"/images/tenants/{_tid:N}/app-logo.png"
+        : "/images/app-logo.png";
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -40,7 +43,7 @@
         <a class="sidebar-logo" asp-area="" asp-controller="Home" asp-action="Index">
             @if (_hasLogo)
             {
-                <img src="/images/app-logo.png?v=@_logoVer"
+                <img src="@_logoUrl?v=@_logoVer"
                      alt="Logo"
                      style="height:24px;width:auto;max-width:120px;object-fit:contain" />
             }

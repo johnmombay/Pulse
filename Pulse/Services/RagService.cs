@@ -27,18 +27,26 @@ public sealed class RagService(
     private const float SimilarityThreshold = 0.45f;
     private const int   MaxContextChars     = 4000;
 
-    private string RagRoot()             => Path.Combine(env.ContentRootPath, "rag");
-    private string DocFolder(string id)  => Path.Combine(RagRoot(), id);
-    private string ChunksPath(string id) => Path.Combine(DocFolder(id), "chunks.json");
-    private string ContentPath(string id)=> Path.Combine(DocFolder(id), "content.txt");
+    // Files are partitioned per tenant on disk: {ContentRoot}/rag/{tid:N}/{docId}/...
+    private string RagRoot()                                   => Path.Combine(env.ContentRootPath, "rag");
+    private string TenantRoot(Guid tenantId)                   => Path.Combine(RagRoot(), tenantId.ToString("N"));
+    private string DocFolder(Guid tenantId, string id)         => Path.Combine(TenantRoot(tenantId), id);
+    private string ChunksPath(Guid tenantId, string id)        => Path.Combine(DocFolder(tenantId, id), "chunks.json");
+    private string ContentPath(Guid tenantId, string id)       => Path.Combine(DocFolder(tenantId, id), "content.txt");
+
+    /// <summary>Path to a document's <c>content.txt</c>, scoped to the given tenant.</summary>
+    public string GetContentPath(Guid tenantId, string id) => ContentPath(tenantId, id);
+
+    /// <summary>Path to a document's <c>chunks.json</c>, scoped to the given tenant.</summary>
+    public string GetChunksPath(Guid tenantId, string id) => ChunksPath(tenantId, id);
 
     // â”€â”€ Ingest â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     public async Task<(int ChunkCount, int EmbeddedCount, string? EmbeddingError)> IngestAsync(
-        string content, string docId, CancellationToken ct = default)
+        string content, string docId, Guid tenantId, CancellationToken ct = default)
     {
-        Directory.CreateDirectory(DocFolder(docId));
-        await File.WriteAllTextAsync(ContentPath(docId), content, Encoding.UTF8, ct);
+        Directory.CreateDirectory(DocFolder(tenantId, docId));
+        await File.WriteAllTextAsync(ContentPath(tenantId, docId), content, Encoding.UTF8, ct);
 
         var textChunks = ChunkText(content);
         logger.LogInformation("RAG ingest: doc {Id} â†’ {N} text chunks", docId, textChunks.Count);
@@ -55,7 +63,7 @@ public sealed class RagService(
             else                        { firstError ??= error; ragChunks.Add(new RagChunk { Text = chunk, Embedding = [] }); }
         }
 
-        await File.WriteAllTextAsync(ChunksPath(docId),
+        await File.WriteAllTextAsync(ChunksPath(tenantId, docId),
             JsonSerializer.Serialize(ragChunks, JsonOpts), Encoding.UTF8, ct);
 
         // â”€â”€ Build / rebuild the SharpVector in-memory index â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -70,13 +78,13 @@ public sealed class RagService(
     }
 
     public async Task<(int ChunkCount, int EmbeddedCount, string? EmbeddingError)> ReembedAsync(
-        string docId, CancellationToken ct = default)
+        string docId, Guid tenantId, CancellationToken ct = default)
     {
-        var path = ContentPath(docId);
+        var path = ContentPath(tenantId, docId);
         if (!File.Exists(path))
             return (0, 0, $"content.txt not found for document {docId} â€” please re-save the document.");
         var content = await File.ReadAllTextAsync(path, Encoding.UTF8, ct);
-        return await IngestAsync(content, docId, ct);
+        return await IngestAsync(content, docId, tenantId, ct);
     }
 
     // â”€â”€ Retrieve â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -100,11 +108,11 @@ public sealed class RagService(
         // â”€â”€ Ensure every enabled doc has a SharpVector index â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         foreach (var doc in enabledDocs.Where(d => !sharpVector.IsRagIndexed(d.Id)))
         {
-            var chunks = LoadChunks(doc.Id);
+            var chunks = LoadChunks(tenantId, doc.Id);
             if (chunks.Count == 0)
             {
                 // Fall back to reading content.txt directly
-                var cPath = ContentPath(doc.Id);
+                var cPath = ContentPath(tenantId, doc.Id);
                 if (File.Exists(cPath))
                 {
                     var text = await File.ReadAllTextAsync(cPath, ct);
@@ -129,7 +137,7 @@ public sealed class RagService(
 
         // â”€â”€ 2. Gemini embedding cosine search â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         var allChunks = new List<RagChunk>();
-        foreach (var doc in enabledDocs) allChunks.AddRange(LoadChunks(doc.Id));
+        foreach (var doc in enabledDocs) allChunks.AddRange(LoadChunks(tenantId, doc.Id));
 
         if (allChunks.Count > 0)
         {
@@ -172,19 +180,19 @@ public sealed class RagService(
 
     // â”€â”€ Delete â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    public void DeleteDocument(string docId)
+    public void DeleteDocument(string docId, Guid tenantId)
     {
         sharpVector.InvalidateRagIndex(docId);
-        var folder = DocFolder(docId);
+        var folder = DocFolder(tenantId, docId);
         if (Directory.Exists(folder))
             Directory.Delete(folder, recursive: true);
     }
 
     // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    private List<RagChunk> LoadChunks(string docId)
+    private List<RagChunk> LoadChunks(Guid tenantId, string docId)
     {
-        var path = ChunksPath(docId);
+        var path = ChunksPath(tenantId, docId);
         if (!File.Exists(path)) return [];
         try { return JsonSerializer.Deserialize<List<RagChunk>>(File.ReadAllText(path)) ?? []; }
         catch (Exception ex) { logger.LogWarning(ex, "Could not load chunks for doc {Id}", docId); return []; }

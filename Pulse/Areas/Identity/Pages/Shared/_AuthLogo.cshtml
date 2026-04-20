@@ -6,12 +6,15 @@
     var _logoVer  = _settings.LogoVersion;
     var _hasLogo  = !string.IsNullOrEmpty(_logoFile);
     var _appName  = _settings.AppName ?? "Pulse";
+    var _logoUrl  = _tenantCtx.TenantId is Guid _tid
+        ? $"/images/tenants/{_tid:N}/app-logo.png"
+        : "/images/app-logo.png";
 }
 
 <div class="d-flex align-items-center gap-2 mb-4">
     @if (_hasLogo)
     {
-        <img src="/images/app-logo.png?v=@_logoVer"
+        <img src="@_logoUrl?v=@_logoVer"
              alt="Logo"
              style="height:26px;width:auto;max-width:140px;object-fit:contain" />
     }

@@ -70,6 +70,12 @@ public class SettingsModel(
     public string? CurrentLogoFileName { get; private set; }
     public string? CurrentLogoVersion  { get; private set; }
 
+    /// <summary>Per-tenant URL of the current logo (without the cache-busting <c>?v=</c> suffix).</summary>
+    public string CurrentLogoUrl =>
+        TenantId == Guid.Empty
+            ? "/images/app-logo.png"
+            : $"/images/tenants/{TenantId:N}/app-logo.png";
+
     public IReadOnlyList<FlatFileDataSource> FlatFileSources { get; private set; } = [];
 
     // ── Terminal ──────────────────────────────────────────────────────────────
@@ -342,7 +348,7 @@ public class SettingsModel(
 
             if (content is not null)
             {
-                var (chunks, embedded, embError) = await ragService.IngestAsync(content, docId);
+                var (chunks, embedded, embError) = await ragService.IngestAsync(content, docId, TenantId);
                 chunkCount = chunks;
 
                 if (embError is not null)
@@ -385,7 +391,7 @@ public class SettingsModel(
     // ── RAG: delete ───────────────────────────────────────────────────────────
     public async Task<IActionResult> OnPostDeleteRagAsync(string id)
     {
-        ragService.DeleteDocument(id);
+        ragService.DeleteDocument(id, TenantId);
         await settingsService.DeleteRagDocumentAsync(TenantId, id);
         TempData["RagSuccess"] = "RAG document removed.";
         return RedirectToPage();
@@ -702,7 +708,7 @@ public class SettingsModel(
 
         try
         {
-            var (chunkCount, embedded, error) = await ragService.ReembedAsync(id);
+            var (chunkCount, embedded, error) = await ragService.ReembedAsync(id, TenantId);
 
             if (error is not null)
                 return new JsonResult(new
@@ -731,10 +737,7 @@ public class SettingsModel(
     // ── RAG: load saved content for the edit modal (AJAX GET) ────────────────
     public async Task<IActionResult> OnGetRagContentAsync(string id)
     {
-        var contentPath = System.IO.Path.Combine(
-            HttpContext.RequestServices
-                .GetRequiredService<IWebHostEnvironment>().ContentRootPath,
-            "rag", id, "content.txt");
+        var contentPath = ragService.GetContentPath(TenantId, id);
 
         if (!System.IO.File.Exists(contentPath))
             return new JsonResult(new { content = (string?)null, found = false });
@@ -746,10 +749,7 @@ public class SettingsModel(
     // ── RAG: embedding health check (AJAX GET) ────────────────────────────────
     public IActionResult OnGetRagStatus(string id)
     {
-        var docFolder   = System.IO.Path.Combine(
-            HttpContext.RequestServices
-                .GetRequiredService<IWebHostEnvironment>().ContentRootPath, "rag", id);
-        var chunksFile  = System.IO.Path.Combine(docFolder, "chunks.json");
+        var chunksFile = ragService.GetChunksPath(TenantId, id);
 
         if (!System.IO.File.Exists(chunksFile))
             return new JsonResult(new { total = 0, embedded = 0 });
@@ -818,7 +818,15 @@ public class SettingsModel(
             return RedirectToPage();
         }
 
-        var imagesDir = Path.Combine(env.WebRootPath, "images");
+        // Multi-tenancy: each tenant's logo is stored under its own subfolder so
+        // tenants don't overwrite each other's files.
+        if (TenantId == Guid.Empty)
+        {
+            TempData["LogoError"] = "A tenant context is required to upload a logo.";
+            return RedirectToPage();
+        }
+
+        var imagesDir = Path.Combine(env.WebRootPath, "images", "tenants", TenantId.ToString("N"));
         Directory.CreateDirectory(imagesDir);
 
         await using (var fs  = new FileStream(Path.Combine(imagesDir, "app-logo.png"), FileMode.Create, FileAccess.Write))
@@ -833,9 +841,17 @@ public class SettingsModel(
     // ── Logo: delete ──────────────────────────────────────────────────────────
     public async Task<IActionResult> OnPostDeleteLogoAsync()
     {
-        var filePath = Path.Combine(env.WebRootPath, "images", "app-logo.png");
-        if (System.IO.File.Exists(filePath))
-            System.IO.File.Delete(filePath);
+        // Delete the per-tenant logo file (if any). Falls back to the legacy
+        // wwwroot/images/app-logo.png path for older uploads.
+        var tenantPath = TenantId == Guid.Empty
+            ? null
+            : Path.Combine(env.WebRootPath, "images", "tenants", TenantId.ToString("N"), "app-logo.png");
+        var legacyPath = Path.Combine(env.WebRootPath, "images", "app-logo.png");
+
+        if (tenantPath is not null && System.IO.File.Exists(tenantPath))
+            System.IO.File.Delete(tenantPath);
+        else if (System.IO.File.Exists(legacyPath))
+            System.IO.File.Delete(legacyPath);
 
         await settingsService.SaveLogoAsync(TenantId, null);
         TempData["LogoSuccess"] = "Custom logo removed. Default logo restored.";
