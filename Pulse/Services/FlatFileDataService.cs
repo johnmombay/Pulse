@@ -17,20 +17,21 @@ public sealed class FlatFileDataService(
 {
     // ── Public API ────────────────────────────────────────────────────────────
 
-    public FlatFileDataSource? GetSource(string id)
-        => (llmSettings.Get().FlatFileSources ?? [])
+    public FlatFileDataSource? GetSource(string id, Guid tenantId)
+        => (llmSettings.GetAsync(tenantId).GetAwaiter().GetResult().FlatFileSources ?? [])
            .FirstOrDefault(s => s.Id == id && s.IsEnabled);
 
-    public IReadOnlyList<FlatFileDataSource> GetAllSources()
-        => llmSettings.Get().FlatFileSources ?? [];
+    public IReadOnlyList<FlatFileDataSource> GetAllSources(Guid tenantId)
+        => llmSettings.GetAsync(tenantId).GetAwaiter().GetResult().FlatFileSources ?? [];
 
     public async Task<(List<Dictionary<string, string>> Rows, string? Error)> ReadAsync(
         string sourceId,
+        Guid   tenantId,
         int? maxRows  = null,
         int  offset   = 0,
         CancellationToken ct = default)
     {
-        var source = GetSource(sourceId);
+        var source = GetSource(sourceId, tenantId);
         if (source is null)
             return ([], $"Data source '{sourceId}' not found or is disabled.");
 

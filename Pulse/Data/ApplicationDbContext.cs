@@ -216,6 +216,7 @@ namespace Pulse.Data
 				e.Property(s => s.ApiKey).HasMaxLength(500);
 				e.Property(s => s.FromAddress).HasMaxLength(200);
 				e.Property(s => s.FromName).HasMaxLength(200);
+				e.Property(s => s.DefaultInbox).HasMaxLength(200);
 			});
 
 			// ── Multi-tenancy global query filters ───────────────────────────────────────

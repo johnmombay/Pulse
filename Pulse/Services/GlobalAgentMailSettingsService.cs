@@ -48,11 +48,12 @@ public sealed class GlobalAgentMailSettingsService
         }
         else
         {
-            existing.IsEnabled   = settings.IsEnabled;
-            existing.ApiBaseUrl  = settings.ApiBaseUrl;
-            existing.ApiKey      = settings.ApiKey;
-            existing.FromAddress = settings.FromAddress;
-            existing.FromName    = settings.FromName;
+            existing.IsEnabled    = settings.IsEnabled;
+            existing.ApiBaseUrl   = settings.ApiBaseUrl;
+            existing.ApiKey       = settings.ApiKey;
+            existing.FromAddress  = settings.FromAddress;
+            existing.FromName     = settings.FromName;
+            existing.DefaultInbox = settings.DefaultInbox;
         }
         await db.SaveChangesAsync();
         _cache.Remove(CacheKey);

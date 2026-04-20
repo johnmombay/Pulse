@@ -1,3 +1,4 @@
+using Pulse.Infrastructure;
 using Pulse.Models;
 using Dapper;
 using Microsoft.Data.SqlClient;
@@ -25,6 +26,7 @@ namespace Pulse.Services;
 /// </summary>
 public sealed class DatabaseTools(
     LlmSettingsService settingsService,
+    ITenantContext tenantContext,
     ILogger<DatabaseTools> logger)
     : IDatabaseTools
 {
@@ -36,7 +38,7 @@ public sealed class DatabaseTools(
     /// <inheritdoc/>
     public JsonElement ListConnections()
     {
-        var summary = (settingsService.Get().DatabaseConnections ?? [])
+        var summary = (settingsService.GetAsync(tenantContext.TenantId ?? Guid.Empty).GetAwaiter().GetResult().DatabaseConnections ?? [])
             .Select(kvp => new
             {
                 id       = kvp.Key,
@@ -331,7 +333,7 @@ public sealed class DatabaseTools(
         string connectionId,
         CancellationToken ct = default)
     {
-        var connections = settingsService.Get().DatabaseConnections
+        var connections = settingsService.GetAsync(tenantContext.TenantId ?? Guid.Empty).GetAwaiter().GetResult().DatabaseConnections
                           ?? new(StringComparer.OrdinalIgnoreCase);
 
         if (!connections.TryGetValue(connectionId, out var entry))
@@ -591,7 +593,7 @@ public sealed class DatabaseTools(
 
     private (DatabaseConnectionEntry entry, DbConnection conn) OpenConnection(string connectionId)
     {
-        var connections = settingsService.Get().DatabaseConnections
+        var connections = settingsService.GetAsync(tenantContext.TenantId ?? Guid.Empty).GetAwaiter().GetResult().DatabaseConnections
                           ?? new(StringComparer.OrdinalIgnoreCase);
 
         if (!connections.TryGetValue(connectionId, out var entry))

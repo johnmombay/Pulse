@@ -1,4 +1,5 @@
 using Pulse.Hubs;
+using Pulse.Infrastructure;
 using Pulse.Models;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.SemanticKernel;
@@ -18,6 +19,7 @@ public sealed class AgentOrchestrationService(
     GeminiKeyRotationService keyRotation,
     ChatHistoryService chatHistory,
     LlmSettingsService llmSettings,
+    ITenantContext tenantContext,
     McpService mcpService,
     RagService ragService,
     MemoryService memoryService,
@@ -54,7 +56,7 @@ public sealed class AgentOrchestrationService(
             chatHistory.SetSessionStatus(sessionId, "thinking");
 
             // Read live settings — picks up any changes saved on the Settings page
-            var settings = llmSettings.Get();
+            var settings = await llmSettings.GetAsync(tenantContext.TenantId ?? Guid.Empty);
 
             // On the first user message of a new session, inject persistent memories
             // and active skill instructions as system messages.
@@ -100,7 +102,7 @@ public sealed class AgentOrchestrationService(
 
             if (enabledRag.Count > 0)
             {
-                var chunks = await ragService.RetrieveAsync(userMessage, cancellationToken);
+                var chunks = await ragService.RetrieveAsync(userMessage, tenantContext.TenantId ?? Guid.Empty, cancellationToken);
                 if (chunks.Count > 0)
                 {
                     var ctx = string.Join("\n\n---\n\n", chunks);

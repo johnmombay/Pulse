@@ -1,3 +1,4 @@
+using Pulse.Infrastructure;
 using Pulse.Models;
 using Microsoft.SemanticKernel;
 using System.ComponentModel;
@@ -12,6 +13,7 @@ namespace Pulse.Services;
 /// </summary>
 public sealed class FlatFileDataPlugin(
     FlatFileDataService dataService,
+    ITenantContext tenantContext,
     ILogger<FlatFileDataPlugin> logger)
 {
     private static readonly JsonSerializerOptions JsonOpts =
@@ -28,7 +30,7 @@ public sealed class FlatFileDataPlugin(
     {
         logger.LogInformation("Agent called flatfile_list_sources");
 
-        var sources = dataService.GetAllSources()
+        var sources = dataService.GetAllSources(tenantContext.TenantId ?? Guid.Empty)
             .Where(s => s.IsEnabled)
             .Select(s => new
             {
@@ -56,7 +58,7 @@ public sealed class FlatFileDataPlugin(
     {
         logger.LogInformation("Agent called flatfile_schema({Id})", sourceId);
 
-        var (rows, error) = await dataService.ReadAsync(sourceId, maxRows: 200, ct: ct);
+        var (rows, error) = await dataService.ReadAsync(sourceId, tenantContext.TenantId ?? Guid.Empty, maxRows: 200, ct: ct);
         if (error is not null)
             return JsonSerializer.Serialize(new { error }, JsonOpts);
 
@@ -101,7 +103,7 @@ public sealed class FlatFileDataPlugin(
 
         maxRows = Math.Clamp(maxRows, 1, 5_000);
 
-        var (rows, error) = await dataService.ReadAsync(sourceId, maxRows, offset, ct);
+        var (rows, error) = await dataService.ReadAsync(sourceId, tenantContext.TenantId ?? Guid.Empty, maxRows, offset, ct);
         if (error is not null)
             return JsonSerializer.Serialize(new { error }, JsonOpts);
 

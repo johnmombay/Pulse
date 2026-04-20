@@ -1,4 +1,5 @@
 using Microsoft.SemanticKernel;
+using Pulse.Infrastructure;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -16,6 +17,7 @@ namespace Pulse.Services;
 /// </summary>
 public sealed class TerminalPlugin(
     LlmSettingsService settingsService,
+    ITenantContext tenantContext,
     ILogger<TerminalPlugin> logger)
 {
     [KernelFunction("run_terminal_command")]
@@ -36,7 +38,7 @@ public sealed class TerminalPlugin(
 
         CancellationToken ct = default)
     {
-        var ts = settingsService.Get().TerminalSettings;
+        var ts = (await settingsService.GetAsync(tenantContext.TenantId ?? Guid.Empty)).TerminalSettings;
 
         if (!ts.IsEnabled)
             return "Terminal execution is disabled. Enable it in Settings → Terminal.";

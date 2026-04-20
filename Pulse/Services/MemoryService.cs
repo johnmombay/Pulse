@@ -1,4 +1,5 @@
 using Pulse.Data;
+using Pulse.Infrastructure;
 using Pulse.Models;
 using Microsoft.EntityFrameworkCore;
 using System.Net.Http.Json;
@@ -22,6 +23,7 @@ public sealed class MemoryService(
     GeminiEmbeddingService embeddings,
     SharpVectorIndexService sharpVector,
     LlmSettingsService llmSettings,
+    ITenantContext tenantContext,
     IHttpClientFactory httpClientFactory,
     ILogger<MemoryService> logger)
 {
@@ -167,7 +169,7 @@ public sealed class MemoryService(
         string userId, string userMessage, string assistantResponse,
         CancellationToken ct = default)
     {
-        var settings = llmSettings.Get();
+        var settings = await llmSettings.GetAsync(tenantContext.TenantId ?? Guid.Empty);
         if (settings.ApiKeys.Count == 0) return;
 
         var count = await db.AgentMemories.CountAsync(m => m.UserId == userId, ct);

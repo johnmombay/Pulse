@@ -7,12 +7,12 @@ namespace Pulse.Services;
 
 /// <summary>
 /// Thin HTTP wrapper around the AgentMail REST API (https://api.agentmail.to/v0).
-/// All endpoints are authenticated with a Bearer token read live from <see cref="LlmSettingsService"/>
+/// All endpoints are authenticated with a Bearer token read live from <see cref="GlobalAgentMailSettingsService"/>
 /// so credential changes take effect without a restart.
 /// </summary>
 public sealed class AgentMailService(
     IHttpClientFactory httpClientFactory,
-    LlmSettingsService settingsService,
+    GlobalAgentMailSettingsService settingsService,
     ILogger<AgentMailService> logger)
 {
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -24,11 +24,11 @@ public sealed class AgentMailService(
 
     // ── Client factory ────────────────────────────────────────────────────────
 
-    private HttpClient CreateClient()
+    private async Task<HttpClient> CreateClientAsync()
     {
-        var s      = settingsService.Get().AgentMail;
+        var s      = await settingsService.GetAsync();
         var client = httpClientFactory.CreateClient("AgentMail");
-        client.BaseAddress = new Uri(s.BaseUrl.TrimEnd('/') + "/");
+        client.BaseAddress = new Uri(s.ApiBaseUrl.TrimEnd('/') + "/");
         client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", s.ApiKey);
         return client;
@@ -40,7 +40,7 @@ public sealed class AgentMailService(
         string inbox, int limit = 20, string? pageToken = null,
         CancellationToken ct = default)
     {
-        var client = CreateClient();
+        var client = await CreateClientAsync();
         var url    = $"inboxes/{Uri.EscapeDataString(inbox)}/threads?limit={limit}";
         if (!string.IsNullOrWhiteSpace(pageToken))
             url += $"&page_token={Uri.EscapeDataString(pageToken)}";
@@ -53,7 +53,7 @@ public sealed class AgentMailService(
         string inbox, string threadId,
         CancellationToken ct = default)
     {
-        var client = CreateClient();
+        var client = await CreateClientAsync();
         var url    = $"inboxes/{Uri.EscapeDataString(inbox)}/threads/{Uri.EscapeDataString(threadId)}";
         logger.LogDebug("AgentMail GET {Url}", url);
         return await client.GetStringAsync(url, ct);
@@ -63,7 +63,7 @@ public sealed class AgentMailService(
         string inbox, int limit = 20, string? pageToken = null,
         CancellationToken ct = default)
     {
-        var client = CreateClient();
+        var client = await CreateClientAsync();
         var url    = $"inboxes/{Uri.EscapeDataString(inbox)}/messages?limit={limit}";
         if (!string.IsNullOrWhiteSpace(pageToken))
             url += $"&page_token={Uri.EscapeDataString(pageToken)}";
@@ -76,7 +76,7 @@ public sealed class AgentMailService(
         string inbox, string messageId,
         CancellationToken ct = default)
     {
-        var client = CreateClient();
+        var client = await CreateClientAsync();
         var url    = $"inboxes/{Uri.EscapeDataString(inbox)}/messages/{Uri.EscapeDataString(messageId)}";
         logger.LogDebug("AgentMail GET {Url}", url);
         return await client.GetStringAsync(url, ct);
@@ -99,7 +99,7 @@ public sealed class AgentMailService(
         string?   inReplyTo   = null,
         CancellationToken ct  = default)
     {
-        var client = CreateClient();
+        var client = await CreateClientAsync();
 
         var payload = new SendEmailPayload
         {

@@ -93,7 +93,7 @@ public class SettingsModel(
     // ── Lifecycle ─────────────────────────────────────────────────────────────
     public async Task OnGetAsync()
     {
-        var current = settingsService.Get();
+        var current = await settingsService.GetAsync(TenantId);
         Input.ModelId    = current.ModelId;
         Input.ApiKeys    = current.ApiKeys.Count > 0 ? [.. current.ApiKeys] : [""];
         AppName          = current.AppName ?? "Pulse";
@@ -148,7 +148,7 @@ public class SettingsModel(
 
         if (!ModelState.IsValid)
         {
-            McpServers = settingsService.Get().McpServers;
+            McpServers = (await settingsService.GetAsync(TenantId)).McpServers;
             return Page();
         }
 
@@ -157,7 +157,7 @@ public class SettingsModel(
             .Where(k => k.Length > 0)
             .ToList();
 
-        var current = settingsService.Get();
+        var current = await settingsService.GetAsync(TenantId);
         await settingsService.SaveAsync(TenantId, new LlmSettingsModel
         {
             AppName             = current.AppName ?? "Pulse",
@@ -331,7 +331,7 @@ public class SettingsModel(
         try
         {
             // Preserve existing metadata when editing without new content
-            var existing       = settingsService.Get().RagDocuments.FirstOrDefault(d => d.Id == docId);
+            var existing       = (await settingsService.GetAsync(TenantId)).RagDocuments.FirstOrDefault(d => d.Id == docId);
             int chunkCount     = existing?.ChunkCount ?? 0;
             string? existFn    = existing?.OriginalFileName;
             string? embeddingWarning = null;
@@ -503,7 +503,7 @@ public class SettingsModel(
             else if (!isNew)
             {
                 // Editing — keep the existing stored path
-                var existing = settingsService.Get().FlatFileSources
+                var existing = (await settingsService.GetAsync(TenantId)).FlatFileSources
                     .FirstOrDefault(s => s.Id == id);
                 filePath = existing?.FilePath ?? "";
                 if (string.IsNullOrEmpty(filePath))
@@ -566,7 +566,8 @@ public class SettingsModel(
         var sp  = HttpContext.RequestServices;
         var svc = sp.GetRequiredService<FlatFileDataService>();
 
-        var (rows, error) = await svc.ReadAsync(id, maxRows: 10, ct: HttpContext.RequestAborted);
+        var tenantCtx = sp.GetRequiredService<ITenantContext>();
+        var (rows, error) = await svc.ReadAsync(id, tenantCtx.TenantId ?? Guid.Empty, maxRows: 10, ct: HttpContext.RequestAborted);
         if (error is not null)
             return new JsonResult(new { success = false, error });
 
@@ -649,7 +650,7 @@ public class SettingsModel(
     // ── RAG: re-embed (retry embedding without re-uploading) ──────────────────
     public async Task<IActionResult> OnPostReembedRagAsync(string id)
     {
-        var doc = settingsService.Get().RagDocuments.FirstOrDefault(d => d.Id == id);
+        var doc = (await settingsService.GetAsync(TenantId)).RagDocuments.FirstOrDefault(d => d.Id == id);
         if (doc is null)
             return new JsonResult(new { success = false, error = "Document not found." });
 

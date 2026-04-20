@@ -27,7 +27,7 @@ public sealed class GeminiEmbeddingService(
     public async Task<(float[]? Vector, string? Error)> EmbedAsync(
         string text, CancellationToken ct = default)
     {
-        var keys = settingsService.Get().ApiKeys;
+        var keys = await settingsService.GetApiKeysAsync();
         if (keys.Count == 0)
             return (null, "No Gemini API keys configured in Settings.");
 

@@ -57,6 +57,16 @@ public sealed class LlmSettingsService
         => throw new InvalidOperationException(
             "LlmSettingsService.Get() requires a TenantId. Use GetAsync(tenantId) instead.");
 
+    /// <summary>Returns all global API keys (not tenant-scoped).</summary>
+    public async Task<List<string>> GetApiKeysAsync()
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.AppApiKeys.AsNoTracking()
+            .OrderBy(k => k.SortOrder)
+            .Select(k => k.Key)
+            .ToListAsync();
+    }
+
     /// <summary>Rebuilds the cache entry for a tenant. No-op if tenantId is empty.</summary>
     public async Task ReloadAsync(Guid tenantId = default)
     {

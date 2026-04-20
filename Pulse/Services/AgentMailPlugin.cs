@@ -19,10 +19,10 @@ namespace Pulse.Services;
 /// </summary>
 public sealed class AgentMailPlugin(
     AgentMailService agentMailService,
-    LlmSettingsService settingsService,
+    GlobalAgentMailSettingsService agentMailSettings,
     ILogger<AgentMailPlugin> logger)
 {
-    private string DefaultInbox => settingsService.Get().AgentMail.DefaultInbox;
+    private string DefaultInbox => agentMailSettings.GetAsync().GetAwaiter().GetResult().DefaultInbox;
 
     // ── Tool: email_list_threads ──────────────────────────────────────────────
 

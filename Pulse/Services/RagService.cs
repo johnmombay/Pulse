@@ -89,9 +89,9 @@ public sealed class RagService(
     ///   3. <b>Keyword overlap fallback</b> â€” last resort, always available.
     /// </summary>
     public async Task<List<string>> RetrieveAsync(
-        string query, CancellationToken ct = default)
+        string query, Guid tenantId, CancellationToken ct = default)
     {
-        var enabledDocs = (settingsService.Get().RagDocuments ?? [])
+        var enabledDocs = ((await settingsService.GetAsync(tenantId)).RagDocuments ?? [])
             .Where(d => d.IsEnabled && d.ChunkCount > 0)
             .ToList();
 
