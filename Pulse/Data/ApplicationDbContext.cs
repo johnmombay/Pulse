@@ -97,7 +97,6 @@ namespace Pulse.Data
 			// ── AppSettings (one row per tenant) ────────────────────────────────
 			builder.Entity<AppSettingsEntity>(e =>
 			{
-				e.Property(s => s.Id).ValueGeneratedNever();
 				e.HasIndex(a => a.TenantId).IsUnique();
 				e.Property(s => s.AppName).HasMaxLength(200);
 				e.Property(s => s.ModelId).HasMaxLength(200);

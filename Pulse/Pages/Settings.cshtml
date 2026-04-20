@@ -225,21 +225,32 @@
 </div>
 
 @* ── Tab navigation ──────────────────────────────────────────────────────── *@
+@{
+    var isSuperAdmin = User.IsInRole("SuperAdmin");
+}
 <ul class="nav settings-tabs mb-0" id="settingsTabs" role="tablist">
-    <li class="nav-item"><button type="button" class="nav-link" data-tab="llm"     >🤖 LLM</button></li>
+    @if (isSuperAdmin)
+    {
+        <li class="nav-item"><button type="button" class="nav-link" data-tab="llm"     >🤖 LLM</button></li>
+    }
     <li class="nav-item"><button type="button" class="nav-link" data-tab="mcp"     >🔌 MCP</button></li>
     <li class="nav-item"><button type="button" class="nav-link" data-tab="data"    >🗄️ Data</button></li>
     <li class="nav-item"><button type="button" class="nav-link" data-tab="skills"  >⚡ Skills</button></li>
     <li class="nav-item"><button type="button" class="nav-link" data-tab="rag"     >🗂️ RAG</button></li>
     <li class="nav-item"><button type="button" class="nav-link" data-tab="memory"  >🧠 Memory</button></li>
     <li class="nav-item"><button type="button" class="nav-link" data-tab="terminal">🖥️ Terminal</button></li>
-    <li class="nav-item"><button type="button" class="nav-link" data-tab="agentmail">✉️ AgentMail</button></li>
+    @if (isSuperAdmin)
+    {
+        <li class="nav-item"><button type="button" class="nav-link" data-tab="agentmail">✉️ AgentMail</button></li>
+    }
     <li class="nav-item"><button type="button" class="nav-link" data-tab="security">🔒 Security</button></li>
 </ul>
 
 @* ═══════════════════════════════════════════════════════════════════════════
-   LLM CONFIGURATION
+   LLM CONFIGURATION (SuperAdmin only — global model + API keys)
 ═══════════════════════════════════════════════════════════════════════════ *@
+@if (isSuperAdmin)
+{
 <div id="tab-pane-llm" class="settings-tab-pane pt-4">
 <form method="post" id="llmForm" novalidate>
     @Html.AntiForgeryToken()
@@ -305,6 +316,7 @@
     </div>
 </form>
 </div><!-- /tab-pane-llm -->
+}
 
 <div id="tab-pane-mcp" class="settings-tab-pane pt-4">
 @* ═══════════════════════════════════════════════════════════════════════════
@@ -1753,8 +1765,10 @@
 </div><!-- /tab-pane-terminal -->
 
 @* ═══════════════════════════════════════════════════════════════════════════
-   AGENTMAIL
+   AGENTMAIL (SuperAdmin only — global outbound email config)
 ═══════════════════════════════════════════════════════════════════════════ *@
+@if (isSuperAdmin)
+{
 <div id="tab-pane-agentmail" class="settings-tab-pane pt-4">
 @{
     var am = Model.AgentMail;
@@ -1824,6 +1838,7 @@
     </div>
 </div>
 </div><!-- /tab-pane-agentmail -->
+}
 
 @* ═══════════════════════════════════════════════════════════════════════════
    SECURITY
@@ -1888,13 +1903,18 @@
         if (el) setTimeout(() => bootstrap.Alert.getOrCreateInstance(el).close(), 4000);
     });
 
-    // ── LLM: model chips ──────────────────────────────────────────────────────
+    // ── LLM: model chips (SuperAdmin only — elements may not exist) ──────────
     const modelInput = document.querySelector('[name="Input.ModelId"]');
-    document.querySelectorAll('.model-chip').forEach(c =>
-        c.addEventListener('click', () => { modelInput.value = c.dataset.model; modelInput.focus(); }));
+    if (modelInput) {
+        document.querySelectorAll('.model-chip').forEach(c =>
+            c.addEventListener('click', () => { modelInput.value = c.dataset.model; modelInput.focus(); }));
+    }
 
-    // ── LLM: API key list ─────────────────────────────────────────────────────
+    // ── LLM: API key list (SuperAdmin only) ──────────────────────────────────
     const keysContainer = document.getElementById('keysContainer');
+    const llmFormEl     = document.getElementById('llmForm');
+    const addKeyBtnEl   = document.getElementById('addKeyBtn');
+    if (keysContainer && llmFormEl && addKeyBtnEl) {
 
     function escHtml(s) {
         return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -1932,18 +1952,19 @@
         if (rm) { rm.closest('.key-row').remove(); reindexKeys(); }
     });
 
-    document.getElementById('addKeyBtn').addEventListener('click', () => {
+    addKeyBtnEl.addEventListener('click', () => {
         const idx = keysContainer.querySelectorAll('.key-row').length;
         const row = buildKeyRow(idx, '');
         keysContainer.appendChild(row);
         row.querySelector('input').focus();
     });
 
-    document.getElementById('llmForm').addEventListener('submit', () => {
+    llmFormEl.addEventListener('submit', () => {
         document.getElementById('llmSaveTxt').textContent = 'Saving…';
         document.getElementById('llmSaveSpinner').classList.remove('d-none');
         document.getElementById('llmSaveBtn').disabled = true;
     });
+    } // end LLM-only block
 
     // ── MCP modal helpers ─────────────────────────────────────────────────────
     window.updateTransportFields = function (type) {
@@ -2945,7 +2966,11 @@
 
         const saved = sessionStorage.getItem('settings-tab');
         const valid = saved && document.querySelector('[data-tab="' + saved + '"]');
-        activateTab(valid ? saved : 'llm');
+        // Default to LLM if rendered (SuperAdmin), otherwise the first visible tab.
+        const fallback = document.querySelector('[data-tab="llm"]')
+            ? 'llm'
+            : (btns[0]?.dataset.tab ?? 'mcp');
+        activateTab(valid ? saved : fallback);
     })();
 
 })();

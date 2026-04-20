@@ -143,6 +143,10 @@ public class SettingsModel(
     // ── LLM save (default POST handler) ──────────────────────────────────────
     public async Task<IActionResult> OnPostAsync()
     {
+        // LLM model + API keys are global infrastructure — only SuperAdmin may modify them.
+        if (!User.IsInRole("SuperAdmin"))
+            return Forbid();
+
         // Remove all McpServer.* entries — they are not part of the LLM form
         RemoveModelStatePrefix(nameof(McpServer));
 
@@ -829,6 +833,10 @@ public class SettingsModel(
     // ── AgentMail ─────────────────────────────────────────────────────────────
     public async Task<IActionResult> OnPostSaveAgentMailAsync()
     {
+        // AgentMail is global outbound email infrastructure — only SuperAdmin may modify it.
+        if (!User.IsInRole("SuperAdmin"))
+            return Forbid();
+
         var model = new Pulse.Models.AgentMailSettings
         {
             IsEnabled    = AgentMail.IsEnabled,

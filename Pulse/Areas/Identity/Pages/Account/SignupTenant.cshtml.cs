@@ -181,10 +181,11 @@ public class SignupTenantModel : PageModel
             await _signInManager.SignInAsync(user, isPersistent: false);
             return LocalRedirect(returnUrl);
         }
-        catch
+        catch (Exception ex)
         {
             await tx.RollbackAsync();
-            ModelState.AddModelError(string.Empty, "An error occurred creating your account. Please try again.");
+            ModelState.AddModelError(string.Empty,
+                $"An error occurred creating your account: {ex.GetBaseException().Message}");
             return Page();
         }
     }

@@ -1,3 +1,4 @@
+using Pulse.Infrastructure;
 using Pulse.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -7,10 +8,11 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Pulse.Pages.Admin;
 
-[Authorize(Policy = "SuperAdminOnly")]
+[Authorize(Policy = "TenantAdminOrAbove")]
 public class UsersModel(
     UserManager<ApplicationUser> userManager,
-    RoleManager<IdentityRole> roleManager) : PageModel
+    RoleManager<IdentityRole> roleManager,
+    ITenantContext tenantContext) : PageModel
 {
     public record UserRow(string Id, string? FullName, string? Email, string Role);
 
@@ -21,6 +23,13 @@ public class UsersModel(
 
     [BindProperty] public CreateInput Create { get; set; } = new();
     [BindProperty] public EditInput   Edit   { get; set; } = new();
+
+    // SuperAdmin sees and manages every tenant. TenantAdmin is scoped to their own tenant.
+    private bool IsSuperAdmin => tenantContext.IsSuperAdmin;
+    private Guid? CurrentTenantId => tenantContext.TenantId;
+
+    // Roles a TenantAdmin is allowed to assign / edit (never SuperAdmin).
+    private static readonly string[] TenantAssignableRoles = ["TenantAdmin", "TenantUser"];
 
     public class CreateInput
     {
@@ -38,7 +47,7 @@ public class UsersModel(
 
         [Required]
         [Display(Name = "Role")]
-        public string Role { get; set; } = "User";
+        public string Role { get; set; } = "TenantUser";
     }
 
     public class EditInput
@@ -55,7 +64,7 @@ public class UsersModel(
 
         [Required]
         [Display(Name = "Role")]
-        public string Role { get; set; } = "User";
+        public string Role { get; set; } = "TenantUser";
 
         [MinLength(6)]
         [Display(Name = "New Password")]
@@ -69,9 +78,29 @@ public class UsersModel(
 
     private async Task LoadAsync()
     {
-        AvailableRoles = roleManager.Roles.OrderBy(r => r.Name).Select(r => r.Name!).ToList();
+        // SuperAdmin sees every role. TenantAdmin can only assign tenant-scoped roles.
+        if (IsSuperAdmin)
+        {
+            AvailableRoles = roleManager.Roles
+                .OrderBy(r => r.Name)
+                .Select(r => r.Name!)
+                .ToList();
+        }
+        else
+        {
+            AvailableRoles = TenantAssignableRoles;
+        }
+
+        // Filter the user list by tenant for non-SuperAdmin callers.
+        var query = userManager.Users.AsQueryable();
+        if (!IsSuperAdmin)
+        {
+            var tid = CurrentTenantId;
+            query = query.Where(u => u.TenantId == tid);
+        }
+
         var rows = new List<UserRow>();
-        foreach (var user in userManager.Users.OrderBy(u => u.Email).ToList())
+        foreach (var user in query.OrderBy(u => u.Email).ToList())
         {
             var roles = await userManager.GetRolesAsync(user);
             var fullName = (user.FirstName + " " + user.LastName).Trim();
@@ -92,13 +121,25 @@ public class UsersModel(
             return Page();
         }
 
+        // TenantAdmins may not assign roles outside their permitted set (no SuperAdmin).
+        if (!IsSuperAdmin && !TenantAssignableRoles.Contains(Create.Role))
+        {
+            ModelState.AddModelError(nameof(Create.Role), "You are not allowed to assign this role.");
+            await LoadAsync();
+            return Page();
+        }
+
         var user = new ApplicationUser
         {
             UserName       = Create.Email,
             Email          = Create.Email,
             FirstName      = Create.FullName.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? string.Empty,
             LastName       = Create.FullName.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries).Skip(1).FirstOrDefault() ?? string.Empty,
-            EmailConfirmed = true
+            EmailConfirmed = true,
+            // TenantAdmins always create users inside their own tenant.
+            // SuperAdmin creates in their own (null) tenant — cross-tenant user creation
+            // belongs on the SuperAdmin Tenants page, not here.
+            TenantId       = CurrentTenantId,
         };
         var result = await userManager.CreateAsync(user, Create.Password);
         if (!result.Succeeded)
@@ -129,6 +170,18 @@ public class UsersModel(
         var user = await userManager.FindByIdAsync(Edit.UserId);
         if (user is null) return NotFound();
 
+        // TenantAdmins may only edit users inside their own tenant.
+        if (!IsSuperAdmin && user.TenantId != CurrentTenantId)
+            return Forbid();
+
+        // TenantAdmins may not promote anyone to (or out of) SuperAdmin.
+        if (!IsSuperAdmin && !TenantAssignableRoles.Contains(Edit.Role))
+        {
+            ModelState.AddModelError(nameof(Edit.Role), "You are not allowed to assign this role.");
+            await LoadAsync();
+            return Page();
+        }
+
         var names = (Edit.FullName ?? string.Empty).Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
         user.FirstName = names.Length > 0 ? names[0] : string.Empty;
         user.LastName = names.Length > 1 ? names[1] : string.Empty;
@@ -137,6 +190,12 @@ public class UsersModel(
         await userManager.UpdateAsync(user);
 
         var existingRoles = await userManager.GetRolesAsync(user);
+
+        // Defence-in-depth: a TenantAdmin must not strip a SuperAdmin role from someone
+        // (this can only happen if a tenant boundary was already breached).
+        if (!IsSuperAdmin && existingRoles.Contains("SuperAdmin"))
+            return Forbid();
+
         await userManager.RemoveFromRolesAsync(user, existingRoles);
         await userManager.AddToRoleAsync(user, Edit.Role);
 
@@ -159,9 +218,24 @@ public class UsersModel(
         }
 
         var user = await userManager.FindByIdAsync(userId);
-        if (user is not null)
-            await userManager.DeleteAsync(user);
+        if (user is null)
+        {
+            StatusMessage = "User deleted.";
+            return RedirectToPage();
+        }
 
+        // TenantAdmins may only delete users inside their own tenant, and never SuperAdmins.
+        if (!IsSuperAdmin)
+        {
+            if (user.TenantId != CurrentTenantId)
+                return Forbid();
+
+            var roles = await userManager.GetRolesAsync(user);
+            if (roles.Contains("SuperAdmin"))
+                return Forbid();
+        }
+
+        await userManager.DeleteAsync(user);
         StatusMessage = "User deleted.";
         return RedirectToPage();
     }

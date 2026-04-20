@@ -99,7 +99,7 @@
                     Workflows
                 </a>
             </li>
-            @if (User.IsInRole("Admin"))
+            @if (User.IsInRole("TenantAdmin") || User.IsInRole("SuperAdmin"))
             {
                 <li><div class="nav-section-label">Admin</div></li>
                 <li>

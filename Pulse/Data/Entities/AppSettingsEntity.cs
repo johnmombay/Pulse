@@ -9,7 +9,7 @@ namespace Pulse.Data.Entities;
 /// </summary>
 public class AppSettingsEntity : ITenantOwned
 {
-    public int Id { get; set; } = 1;
+    public int Id { get; set; }
 
     public Guid TenantId { get; set; }
 

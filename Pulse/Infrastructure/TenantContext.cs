@@ -5,7 +5,8 @@ namespace Pulse.Infrastructure;
 
 /// <summary>
 /// Provides the current tenant context resolved from the authenticated user's claims.
-/// Scoped — one instance per HTTP request.
+/// Registered as a singleton — per-request state comes from <see cref="IHttpContextAccessor"/>,
+/// and per-async-flow overrides (background jobs) are isolated via <see cref="AsyncLocal{T}"/>.
 /// </summary>
 public interface ITenantContext
 {
@@ -17,7 +18,8 @@ public interface ITenantContext
 
     /// <summary>
     /// Allows background jobs (Hangfire) to supply a TenantId outside of an HTTP context.
-    /// Call this at the start of a background job before any DB work.
+    /// Call this at the start of a background job before any DB work. The override is
+    /// flowed via <see cref="AsyncLocal{T}"/> so it is isolated per async call chain.
     /// </summary>
     void SetTenantId(Guid? tenantId);
 }
@@ -25,7 +27,10 @@ public interface ITenantContext
 public class TenantContext : ITenantContext
 {
     private readonly IHttpContextAccessor _httpContextAccessor;
-    private (bool Set, Guid? Value) _override;
+
+    // AsyncLocal so that overrides set by background jobs are isolated per async flow
+    // and do not leak across concurrent jobs sharing this singleton instance.
+    private static readonly AsyncLocal<(bool Set, Guid? Value)> _override = new();
 
     public TenantContext(IHttpContextAccessor httpContextAccessor)
     {
@@ -36,7 +41,8 @@ public class TenantContext : ITenantContext
     {
         get
         {
-            if (_override.Set) return _override.Value;
+            var ovr = _override.Value;
+            if (ovr.Set) return ovr.Value;
 
             var claim = _httpContextAccessor.HttpContext?
                 .User.FindFirstValue("tid");
@@ -50,5 +56,5 @@ public class TenantContext : ITenantContext
             .User.IsInRole("SuperAdmin") ?? false;
 
     public void SetTenantId(Guid? tenantId)
-        => _override = (true, tenantId);
+        => _override.Value = (true, tenantId);
 }

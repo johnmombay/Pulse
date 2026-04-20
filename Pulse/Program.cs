@@ -8,6 +8,7 @@ using Hangfire;
 using Hangfire.SqlServer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using QuestPDF.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -22,8 +23,12 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 // AddDbContextFactory registers:
 //   • IDbContextFactory<ApplicationDbContext> as Singleton  → used by ChatHistoryService
 //   • ApplicationDbContext                    as Scoped     → used by Identity / Razor Pages
+// PendingModelChangesWarning is suppressed because the multi-tenant query filters
+// capture an instance field (_tenantContext), which the EF Core model differ
+// reports as a model change on every startup even though no schema migration is needed.
 builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
-	options.UseSqlServer(connectionString));
+	options.UseSqlServer(connectionString)
+		   .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning)));
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
 // ── Identity ──────────────────────────────────────────────────────────────────
@@ -41,7 +46,7 @@ builder.Services.AddDefaultIdentity<ApplicationUser>(options =>
 	.AddEntityFrameworkStores<ApplicationDbContext>()
 	.AddClaimsPrincipalFactory<ApplicationUserClaimsPrincipalFactory>();
 
-builder.Services.AddScoped<ITenantContext, TenantContext>();
+builder.Services.AddSingleton<ITenantContext, TenantContext>();
 
 // ── MVC + Razor Pages ─────────────────────────────────────────────────────────
 builder.Services.AddControllersWithViews();
@@ -190,6 +195,14 @@ using (var startupScope = app.Services.CreateScope())
 		var result = await userManager.CreateAsync(admin, adminPassword);
 		if (result.Succeeded)
 			await userManager.AddToRoleAsync(admin, "SuperAdmin");
+	}
+
+	// Always ensure the seeded admin has the SuperAdmin role, even if the user
+	// was created in an earlier run before role assignment was wired up.
+	var existingAdmin = await userManager.FindByEmailAsync(adminEmail);
+	if (existingAdmin is not null && !await userManager.IsInRoleAsync(existingAdmin, "SuperAdmin"))
+	{
+		await userManager.AddToRoleAsync(existingAdmin, "SuperAdmin");
 	}
 
 	// Re-register all enabled recurring tasks with Hangfire after restart
