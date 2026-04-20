@@ -1,3 +1,5 @@
+using Pulse.Models;
+
 namespace Pulse.Data.Entities;
 
 public class Tenant
@@ -13,5 +15,6 @@ public class Tenant
 
     public bool IsActive { get; set; } = true;
 
-    // Navigation: ICollection<ApplicationUser> Users — wired in Task 2
+    // Navigation
+    public ICollection<ApplicationUser> Users { get; set; } = new List<ApplicationUser>();
 }

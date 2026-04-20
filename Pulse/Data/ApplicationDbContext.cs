@@ -167,6 +167,17 @@ namespace Pulse.Data
 			});
 
 			// ── Multi-tenancy ─────────────────────────────────────────────────────
+			builder.Entity<ApplicationUser>(e =>
+			{
+				e.HasOne(u => u.Tenant)
+				 .WithMany(t => t.Users)
+				 .HasForeignKey(u => u.TenantId)
+				 .OnDelete(DeleteBehavior.Restrict)  // Don't cascade-delete users when tenant is deleted — admin should clean up users first
+				 .IsRequired(false);
+
+				e.HasIndex(u => u.TenantId);
+			});
+
 			builder.Entity<Tenant>(e =>
 			{
 				e.Property(t => t.Id).ValueGeneratedNever();
