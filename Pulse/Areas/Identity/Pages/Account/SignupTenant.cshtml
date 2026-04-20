@@ -1,8 +1,7 @@
 @page
-@model RegisterModel
+@model SignupTenantModel
 @{
-    ViewData["Title"] = "Create Account";
-    Response.Redirect("/Identity/Account/SignupTenant");
+    ViewData["Title"] = "Create your workspace";
 }
 
 @section Styles {
@@ -22,12 +21,17 @@
 
         <partial name="_AuthLogo" />
 
-        <h1 style="font-size:1.45rem;font-weight:700;margin-bottom:.3rem;color:var(--page-text)">Create account</h1>
-        <p style="font-size:.875rem;color:var(--sidebar-text-muted);margin-bottom:1.75rem">Join Pulse and start getting insights.</p>
+        <h1 style="font-size:1.45rem;font-weight:700;margin-bottom:.3rem;color:var(--page-text)">Create your workspace</h1>
+        <p style="font-size:.875rem;color:var(--sidebar-text-muted);margin-bottom:1.75rem">Set up your organisation and admin account.</p>
 
-        <form id="registerForm" asp-route-returnUrl="@Model.ReturnUrl" method="post">
+        <form id="signupTenantForm" asp-route-returnUrl="@Model.ReturnUrl" method="post">
             <div asp-validation-summary="ModelOnly" class="alert alert-danger py-2 px-3 mb-3"
                  role="alert" style="font-size:.82rem;border-radius:.55rem"></div>
+            <div class="form-floating mb-3">
+                <input asp-for="Input.TenantName" class="form-control" autocomplete="organization" aria-required="true" placeholder="Organisation name" />
+                <label asp-for="Input.TenantName">Organisation name</label>
+                <span asp-validation-for="Input.TenantName" class="text-danger d-block mt-1" style="font-size:.78rem"></span>
+            </div>
             <div class="row g-2 mb-0">
                 <div class="col-6">
                     <div class="form-floating mb-3">
@@ -59,11 +63,11 @@
                 <label asp-for="Input.ConfirmPassword">Confirm password</label>
                 <span asp-validation-for="Input.ConfirmPassword" class="text-danger d-block mt-1" style="font-size:.78rem"></span>
             </div>
-            <button id="registerSubmit" type="submit" class="w-100 btn btn-primary" style="height:2.75rem;font-weight:600;border-radius:.55rem;font-size:.925rem">Create Account</button>
+            <button id="signupTenantSubmit" type="submit" class="w-100 btn btn-primary" style="height:2.75rem;font-weight:600;border-radius:.55rem;font-size:.925rem">Create workspace</button>
         </form>
 
         <div class="bp-auth-divider">
-            Already have an account? <a asp-page="./Login" asp-route-returnUrl="@Model.ReturnUrl">Sign in</a>
+            Already have an account? <a asp-page="/Account/Login" asp-area="Identity">Sign in</a>
         </div>
 
     </div>
