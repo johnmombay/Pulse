@@ -1,23 +1,64 @@
 ﻿@page
 @model RegisterConfirmationModel
 @{
-    ViewData["Title"] = "Register confirmation";
+    ViewData["Title"] = "Check your email";
 }
 
-<h1>@ViewData["Title"]</h1>
-@{
-    if (@Model.DisplayConfirmAccountLink)
-    {
-<p>
-    This app does not currently have a real email sender registered, see <a href="https://aka.ms/aspaccountconf">these docs</a> for how to configure a real email sender.
-    Normally this would be emailed: <a id="confirm-link" href="@Model.EmailConfirmationUrl">Click here to confirm your account</a>
-</p>
+@section Styles {
+<style>
+    .bp-auth       { display:flex; justify-content:center; padding:2rem 1rem 4rem; }
+    .bp-auth-card  {
+        width:100%; max-width:520px;
+        background:var(--surface-1);
+        border:1px solid var(--surface-border);
+        border-radius:.9rem;
+        box-shadow:var(--shadow-card-hover);
+        padding:2.5rem 2.25rem 2rem;
+        text-align:center;
     }
-    else
-    {
-<p>
-        Please check your email to confirm your account.
-</p>
+    .bp-auth-icon  {
+        width:56px; height:56px;
+        background:#eff6ff;
+        border-radius:14px;
+        display:inline-flex; align-items:center; justify-content:center;
+        margin:0 auto 18px;
     }
+</style>
 }
+
+<div class="bp-auth">
+    <div class="bp-auth-card">
+
+        <partial name="_AuthLogo" />
+
+        <div class="bp-auth-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2563eb"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 6l-10 7L2 6"/>
+                <rect x="2" y="4" width="20" height="16" rx="2"/>
+            </svg>
+        </div>
+
+        <h1 style="font-size:1.4rem;font-weight:700;margin:0 0 .5rem;color:var(--page-text)">
+            Check your email
+        </h1>
+        <p style="font-size:.925rem;color:var(--sidebar-text-muted);margin:0 0 1.25rem;line-height:1.6">
+            We've sent a confirmation link to
+            <strong style="color:var(--page-text)">@Model.Email</strong>.
+            Click the link in the email to finalize your sign-up.
+        </p>
+
+        <div class="alert alert-light border py-2 px-3 mb-3"
+             style="font-size:.82rem;border-radius:.55rem;text-align:left;background:var(--surface-2)">
+            ℹ️ The email usually arrives within a minute. If you don't see it, please check your
+            <strong>Spam</strong> or <strong>Promotions</strong> folder.
+        </div>
+
+        <div style="border-top:1px solid var(--surface-border);margin-top:1.25rem;padding-top:1rem;font-size:.83rem;color:var(--sidebar-text-muted)">
+            Already confirmed?
+            <a asp-area="Identity" asp-page="/Account/Login" style="color:var(--brand);font-weight:500;text-decoration:none">Sign in</a>
+        </div>
+
+    </div>
+</div>
 

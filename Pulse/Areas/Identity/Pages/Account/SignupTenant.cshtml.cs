@@ -154,7 +154,7 @@ public class SignupTenantModel : PageModel
 
             await tx.CommitAsync();
 
-            // 5. Send email confirmation
+            // 5. Send welcome / email confirmation
             var code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
             code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
             var callbackUrl = Url.Page(
@@ -165,8 +165,14 @@ public class SignupTenantModel : PageModel
 
             try
             {
-                await _emailSender.SendEmailAsync(Input.Email, "Confirm your email",
-                    $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
+                var encodedUrl = HtmlEncoder.Default.Encode(callbackUrl);
+                var appName    = (await _settingsService.GetAsync(tenant.Id)).AppName ?? Input.TenantName.Trim();
+                var firstName  = Input.FirstName.Trim();
+
+                await _emailSender.SendEmailAsync(
+                    Input.Email,
+                    $"Welcome to {appName} — confirm your email",
+                    BuildWelcomeEmailHtml(firstName, Input.TenantName.Trim(), encodedUrl, appName));
             }
             catch (Exception ex)
             {
@@ -198,4 +204,75 @@ public class SignupTenantModel : PageModel
         slug = slug.Trim('-');
         return slug.Length > 80 ? slug[..80] : slug;
     }
+
+    private static string BuildWelcomeEmailHtml(string firstName, string tenantName, string encodedUrl, string appName) => $$"""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+        <body style="margin:0;padding:0;background:#f4f6fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+          <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 16px">
+            <tr><td align="center">
+              <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;box-shadow:0 1px 6px rgba(0,0,0,.06)">
+                <tr>
+                  <td style="padding:36px 40px 28px">
+
+                    <div style="margin-bottom:28px">
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                        <rect x="2"  y="14" width="4"  height="8"  rx="1" fill="#2563eb" opacity=".7"/>
+                        <rect x="8"  y="9"  width="4"  height="13" rx="1" fill="#2563eb" opacity=".85"/>
+                        <rect x="14" y="4"  width="4"  height="18" rx="1" fill="#2563eb"/>
+                      </svg>
+                      <span style="font-size:1.1rem;font-weight:700;color:#111827;vertical-align:middle;margin-left:8px">{{appName}}</span>
+                    </div>
+
+                    <div style="width:48px;height:48px;background:#eff6ff;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:20px">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 6l-10 7L2 6"/>
+                        <rect x="2" y="4" width="20" height="16" rx="2"/>
+                      </svg>
+                    </div>
+
+                    <h1 style="font-size:1.5rem;font-weight:700;color:#111827;margin:0 0 10px">Welcome aboard, {{firstName}} 👋</h1>
+                    <p style="font-size:.95rem;color:#374151;margin:0 0 14px;line-height:1.65">
+                      Your <strong>{{tenantName}}</strong> workspace on Lucentstride Pulse is almost ready.
+                      You're one click away from a real-time view of your operations — monitor key signals,
+                      automate workflows, and act on insights without the busywork.
+                    </p>
+                    <p style="font-size:.9rem;color:#6b7280;margin:0 0 28px;line-height:1.6">
+                      Please confirm your email address to finish setting up your account.
+                    </p>
+
+                    <table cellpadding="0" cellspacing="0" style="margin-bottom:28px">
+                      <tr>
+                        <td style="background:#2563eb;border-radius:8px">
+                          <a href="{{encodedUrl}}"
+                             style="display:inline-block;padding:13px 32px;color:#fff;font-size:.925rem;font-weight:600;text-decoration:none;border-radius:8px">
+                            Confirm my email
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <p style="font-size:.82rem;color:#9ca3af;margin:0 0 4px">Button not working? Copy this link into your browser:</p>
+                    <p style="font-size:.78rem;color:#2563eb;word-break:break-all;margin:0 0 28px">
+                      <a href="{{encodedUrl}}" style="color:#2563eb">{{encodedUrl}}</a>
+                    </p>
+
+                    <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 20px" />
+                    <p style="font-size:.78rem;color:#9ca3af;margin:0 0 6px">
+                      You're receiving this email because this address was used to create a {{appName}} workspace.
+                      If that wasn't you, you can safely ignore this message — the account won't activate without confirmation.
+                    </p>
+                    <p style="font-size:.78rem;color:#9ca3af;margin:0">
+                      — The {{appName}} team
+                    </p>
+
+                  </td>
+                </tr>
+              </table>
+            </td></tr>
+          </table>
+        </body>
+        </html>
+        """;
 }

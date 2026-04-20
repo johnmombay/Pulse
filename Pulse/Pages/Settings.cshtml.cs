@@ -1,3 +1,4 @@
+using Pulse.Data.Entities;
 using Pulse.Infrastructure;
 using Pulse.Models;
 using Pulse.Services;
@@ -16,7 +17,8 @@ public class SettingsModel(
     MemoryService memoryService,
     IDatabaseTools databaseTools,
     IWebHostEnvironment env,
-    ITenantContext tenantContext) : PageModel
+    ITenantContext tenantContext,
+    GlobalAgentMailSettingsService globalAgentMail) : PageModel
 {
     // TODO(multi-tenancy): Admin settings pages should validate the user belongs to this tenant.
     private Guid TenantId => tenantContext.TenantId ?? Guid.Empty;
@@ -129,12 +131,12 @@ public class SettingsModel(
             MaxOutputLength  = ts.MaxOutputLength,
         };
 
-        var am = current.AgentMail ?? new();
+        var am = await globalAgentMail.GetAsync();
         AgentMail = new AgentMailInput
         {
             IsEnabled    = am.IsEnabled,
             ApiKey       = am.ApiKey,
-            BaseUrl      = string.IsNullOrWhiteSpace(am.BaseUrl) ? "https://api.agentmail.to/v0" : am.BaseUrl,
+            BaseUrl      = string.IsNullOrWhiteSpace(am.ApiBaseUrl) ? "https://api.agentmail.to/v0" : am.ApiBaseUrl,
             DefaultInbox = am.DefaultInbox,
         };
 
@@ -895,16 +897,21 @@ public class SettingsModel(
         if (!User.IsInRole("SuperAdmin"))
             return Forbid();
 
-        var model = new Pulse.Models.AgentMailSettings
+        // Preserve fields that aren't surfaced in this UI (FromAddress / FromName).
+        var existing = await globalAgentMail.GetAsync();
+        var model = new GlobalAgentMailSettings
         {
+            Id           = 1,
             IsEnabled    = AgentMail.IsEnabled,
             ApiKey       = AgentMail.ApiKey?.Trim() ?? "",
-            BaseUrl      = string.IsNullOrWhiteSpace(AgentMail.BaseUrl)
+            ApiBaseUrl   = string.IsNullOrWhiteSpace(AgentMail.BaseUrl)
                                ? "https://api.agentmail.to/v0"
                                : AgentMail.BaseUrl.Trim(),
             DefaultInbox = AgentMail.DefaultInbox?.Trim() ?? "",
+            FromAddress  = existing.FromAddress,
+            FromName     = existing.FromName,
         };
-        await settingsService.SaveAgentMailSettingsAsync(model);
+        await globalAgentMail.SaveAsync(model);
         TempData["AgentMailSuccess"] = "AgentMail settings saved.";
         return RedirectToPage();
     }

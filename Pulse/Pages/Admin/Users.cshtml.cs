@@ -1,9 +1,11 @@
+using Pulse.Data;
 using Pulse.Infrastructure;
 using Pulse.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
 
 namespace Pulse.Pages.Admin;
@@ -12,7 +14,9 @@ namespace Pulse.Pages.Admin;
 public class UsersModel(
     UserManager<ApplicationUser> userManager,
     RoleManager<IdentityRole> roleManager,
-    ITenantContext tenantContext) : PageModel
+    ITenantContext tenantContext,
+    ApplicationDbContext db,
+    ILogger<UsersModel> logger) : PageModel
 {
     public record UserRow(string Id, string? FullName, string? Email, string Role);
 
@@ -235,7 +239,43 @@ public class UsersModel(
                 return Forbid();
         }
 
+        var deletedTenantId = user.TenantId;
         await userManager.DeleteAsync(user);
+
+        // If this was the last user in the tenant, delete the tenant (and its
+        // AppSettings row) so the organisation name is freed and can be reused.
+        if (deletedTenantId is Guid tid)
+        {
+            var remaining = await userManager.Users
+                .CountAsync(u => u.TenantId == tid);
+
+            if (remaining == 0)
+            {
+                var tenant = await db.Tenants
+                    .IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(t => t.Id == tid);
+
+                if (tenant is not null)
+                {
+                    var appSettings = await db.AppSettings
+                        .IgnoreQueryFilters()
+                        .FirstOrDefaultAsync(a => a.TenantId == tid);
+                    if (appSettings is not null)
+                        db.AppSettings.Remove(appSettings);
+
+                    db.Tenants.Remove(tenant);
+                    await db.SaveChangesAsync();
+
+                    logger.LogInformation(
+                        "Tenant {TenantId} ({Name}) deleted \u2014 had no remaining users.",
+                        tid, tenant.Name);
+
+                    StatusMessage = $"User deleted. Organisation \"{tenant.Name}\" was also removed because it had no remaining users.";
+                    return RedirectToPage();
+                }
+            }
+        }
+
         StatusMessage = "User deleted.";
         return RedirectToPage();
     }

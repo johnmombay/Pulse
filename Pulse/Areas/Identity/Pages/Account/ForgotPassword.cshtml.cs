@@ -6,6 +6,7 @@ using System.Text.Encodings.Web;
 using Pulse.Models;
 using Pulse.Services;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
@@ -15,18 +16,18 @@ namespace Pulse.Areas.Identity.Pages.Account
     public class ForgotPasswordModel : PageModel
     {
         private readonly UserManager<ApplicationUser> _userManager;
-        private readonly AgentMailService             _agentMail;
+        private readonly IEmailSender                 _emailSender;
         private readonly LlmSettingsService           _settings;
         private readonly ILogger<ForgotPasswordModel> _logger;
 
         public ForgotPasswordModel(
             UserManager<ApplicationUser> userManager,
-            AgentMailService             agentMail,
+            IEmailSender                 emailSender,
             LlmSettingsService           settings,
             ILogger<ForgotPasswordModel> logger)
         {
             _userManager = userManager;
-            _agentMail   = agentMail;
+            _emailSender = emailSender;
             _settings    = settings;
             _logger      = logger;
         }
@@ -63,38 +64,25 @@ namespace Pulse.Areas.Identity.Pages.Account
 
             var encodedUrl = HtmlEncoder.Default.Encode(callbackUrl);
             var firstName  = !string.IsNullOrWhiteSpace(user.FirstName) ? user.FirstName : Input.Email;
-            // TODO: fix pre-auth security settings for multi-tenancy
-            var _s         = await _settings.GetAsync(Guid.Empty);
-            var mail       = _s.AgentMail;
-            var appName    = _s.AppName ?? "Pulse";
 
-            if (mail.IsEnabled
-                && !string.IsNullOrWhiteSpace(mail.ApiKey)
-                && !string.IsNullOrWhiteSpace(mail.DefaultInbox))
+            // Pull tenant-scoped branding (AppName) for the email subject / body.
+            var tenantId = user.TenantId ?? Guid.Empty;
+            var appName  = (await _settings.GetAsync(tenantId)).AppName ?? "Pulse";
+
+            try
             {
-                try
-                {
-                    await _agentMail.SendEmailAsync(
-                        inbox:   mail.DefaultInbox,
-                        to:      [Input.Email],
-                        subject: $"Reset your {appName} password",
-                        text:    $"Hi {firstName},\n\nReset your password:\n{callbackUrl}\n\nIf you didn't request this, ignore this email.",
-                        html:    BuildResetEmailHtml(firstName, encodedUrl, appName));
+                await _emailSender.SendEmailAsync(
+                    Input.Email,
+                    $"Reset your {appName} password",
+                    BuildResetEmailHtml(firstName, encodedUrl, appName));
 
-                    _logger.LogInformation(
-                        "Password reset email sent via AgentMail to {Email}", Input.Email);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex,
-                        "AgentMail failed to send password reset email to {Email}", Input.Email);
-                }
+                _logger.LogInformation(
+                    "Password reset email queued for {Email}", Input.Email);
             }
-            else
+            catch (Exception ex)
             {
-                _logger.LogWarning(
-                    "AgentMail is not configured — password reset email not sent for {Email}",
-                    Input.Email);
+                _logger.LogError(ex,
+                    "Failed to send password reset email to {Email}", Input.Email);
             }
 
             return RedirectToPage("./ForgotPasswordConfirmation");

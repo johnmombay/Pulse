@@ -1,8 +1,129 @@
 ﻿@page
 @model ConfirmEmailModel
 @{
-    ViewData["Title"] = "Confirm email";
+    ViewData["Title"] = Model.Succeeded ? "You're all set" : "Confirmation failed";
 }
 
-<h1>@ViewData["Title"]</h1>
-<partial name="_StatusMessage" model="Model.StatusMessage" />
+@section Styles {
+<style>
+    .bp-auth       { display:flex; justify-content:center; padding:2rem 1rem 4rem; }
+    .bp-auth-card  {
+        width:100%; max-width:560px;
+        background:var(--surface-1);
+        border:1px solid var(--surface-border);
+        border-radius:.9rem;
+        box-shadow:var(--shadow-card-hover);
+        padding:2.5rem 2.25rem 2rem;
+        text-align:center;
+    }
+    .bp-auth-icon  {
+        width:64px; height:64px;
+        border-radius:16px;
+        display:inline-flex; align-items:center; justify-content:center;
+        margin:0 auto 20px;
+    }
+    .bp-auth-icon.ok   { background:#ecfdf5; }
+    .bp-auth-icon.err  { background:#fef2f2; }
+    .bp-cta {
+        display:inline-block; padding:.7rem 1.75rem;
+        background:var(--brand); color:#fff;
+        border-radius:.55rem; font-weight:600; font-size:.925rem;
+        text-decoration:none;
+    }
+    .bp-cta:hover { filter:brightness(.95); color:#fff; }
+    .bp-feature-list {
+        text-align:left;
+        display:inline-block;
+        margin:.5rem auto 1.75rem;
+        padding:0;
+        list-style:none;
+        font-size:.9rem;
+        color:var(--page-text);
+    }
+    .bp-feature-list li {
+        padding:.35rem 0;
+        display:flex; align-items:flex-start; gap:.55rem;
+    }
+    .bp-feature-list svg { flex:none; margin-top:.2rem; }
+</style>
+}
+
+<div class="bp-auth">
+    <div class="bp-auth-card">
+
+        <partial name="_AuthLogo" />
+
+        @if (Model.Succeeded)
+        {
+            <div class="bp-auth-icon ok">
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#10b981"
+                     stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 6L9 17l-5-5"/>
+                </svg>
+            </div>
+
+            <h1 style="font-size:1.55rem;font-weight:700;margin:0 0 .5rem;color:var(--page-text)">
+                🎉 You're in — welcome aboard!
+            </h1>
+            <p style="font-size:.95rem;color:var(--sidebar-text-muted);margin:0 0 1.25rem;line-height:1.65">
+                Your email is confirmed and your workspace is ready. From here you can:
+            </p>
+
+            <ul class="bp-feature-list">
+                <li>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/>
+                    </svg>
+                    Monitor the health of your operations in real time
+                </li>
+                <li>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
+                    </svg>
+                    Automate workflows and act on insights without the busywork
+                </li>
+                <li>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                    Invite teammates and give them the right level of access
+                </li>
+            </ul>
+
+            <div>
+                <a asp-area="Identity" asp-page="/Account/Login" class="bp-cta">
+                    Sign in to your workspace
+                </a>
+            </div>
+        }
+        else
+        {
+            <div class="bp-auth-icon err">
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#ef4444"
+                     stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M15 9l-6 6"/><path d="M9 9l6 6"/>
+                </svg>
+            </div>
+
+            <h1 style="font-size:1.4rem;font-weight:700;margin:0 0 .5rem;color:var(--page-text)">
+                We couldn't confirm your email
+            </h1>
+            <p style="font-size:.925rem;color:var(--sidebar-text-muted);margin:0 0 1.5rem;line-height:1.6">
+                The confirmation link may have expired or already been used.
+                You can request a fresh link below.
+            </p>
+
+            <a asp-area="Identity" asp-page="/Account/ResendEmailConfirmation" class="bp-cta">
+                Resend confirmation email
+            </a>
+        }
+
+    </div>
+</div>
