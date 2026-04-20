@@ -26,6 +26,10 @@ namespace Pulse.Data
 		public DbSet<FlatFileSourceEntity>     FlatFileSources      => Set<FlatFileSourceEntity>();
 		public DbSet<DatabaseConnectionEntity> DatabaseConnections  => Set<DatabaseConnectionEntity>();
 
+		// ── Multi-tenancy ─────────────────────────────────────────────────────────
+		public DbSet<Tenant>                   Tenants              => Set<Tenant>();
+		public DbSet<GlobalAgentMailSettings>  GlobalAgentMailSettings => Set<GlobalAgentMailSettings>();
+
 		protected override void OnModelCreating(ModelBuilder builder)
 		{
 			base.OnModelCreating(builder);
@@ -160,6 +164,26 @@ namespace Pulse.Data
 				e.Property(d => d.Label).HasMaxLength(200);
 				e.Property(d => d.ConnectionString).HasColumnType("nvarchar(max)");
 				e.Property(d => d.AllowedSchemasJson).HasColumnType("nvarchar(max)");
+			});
+
+			// ── Multi-tenancy ─────────────────────────────────────────────────────
+			builder.Entity<Tenant>(e =>
+			{
+				e.Property(t => t.Id).ValueGeneratedNever();
+				e.Property(t => t.Name).HasMaxLength(200).IsRequired();
+				e.Property(t => t.Slug).HasMaxLength(100).IsRequired();
+				e.HasIndex(t => t.Slug).IsUnique();
+				e.HasIndex(t => t.Name).IsUnique();
+			});
+
+			builder.Entity<GlobalAgentMailSettings>(e =>
+			{
+				e.Property(s => s.Id).ValueGeneratedNever();
+				e.ToTable(t => t.HasCheckConstraint("CK_GlobalAgentMailSettings_Singleton", "[Id] = 1"));
+				e.Property(s => s.ApiBaseUrl).HasMaxLength(500);
+				e.Property(s => s.ApiKey).HasMaxLength(500);
+				e.Property(s => s.FromAddress).HasMaxLength(200);
+				e.Property(s => s.FromName).HasMaxLength(200);
 			});
 		}
 	}

@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace Pulse.Data.Entities;
 
 /// <summary>
@@ -12,15 +10,11 @@ public class GlobalAgentMailSettings
 
     public bool IsEnabled { get; set; }
 
-    [MaxLength(500)]
     public string ApiBaseUrl { get; set; } = string.Empty;
 
-    [MaxLength(500)]
     public string ApiKey { get; set; } = string.Empty;
 
-    [MaxLength(200)]
     public string FromAddress { get; set; } = string.Empty;
 
-    [MaxLength(200)]
     public string FromName { get; set; } = string.Empty;
 }
