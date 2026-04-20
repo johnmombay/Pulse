@@ -2,8 +2,9 @@ using Pulse.Models;
 
 namespace Pulse.Data.Entities;
 
-public class FlatFileSourceEntity
+public class FlatFileSourceEntity : ITenantOwned
 {
+    public Guid TenantId { get; set; }
     public string          Id                 { get; set; } = Guid.NewGuid().ToString("N")[..8];
     public string          Label              { get; set; } = "";
     public FlatFileFormat  Format             { get; set; } = FlatFileFormat.Csv;

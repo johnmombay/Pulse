@@ -145,7 +145,7 @@ public sealed class LlmSettingsService
         UpdateScalarAsync(row => row.Terminal = Clone(settings));
 
     public Task SaveAgentMailSettingsAsync(AgentMailSettings settings) =>
-        UpdateScalarAsync(row => row.AgentMail = Clone(settings));
+        Task.CompletedTask; // TODO(multi-tenancy): AgentMail moved to GlobalAgentMailSettings
 
     public Task SaveSecuritySettingsAsync(SecuritySettings settings) =>
         UpdateScalarAsync(row => row.Security = Clone(settings));
@@ -265,7 +265,7 @@ public sealed class LlmSettingsService
                 LogoFileName = row?.LogoFileName,
                 LogoVersion  = row?.LogoVersion,
                 TerminalSettings = row?.Terminal  ?? new(),
-                AgentMail        = row?.AgentMail ?? new(),
+                AgentMail        = new(), // TODO(multi-tenancy): AgentMail moved to GlobalAgentMailSettings
                 Security         = row?.Security  ?? new(),
                 ApiKeys      = keys,
                 McpServers   = mcp.Select(FromEntity).ToList(),
@@ -295,7 +295,7 @@ public sealed class LlmSettingsService
         row.LogoFileName = m.LogoFileName;
         row.LogoVersion  = m.LogoVersion;
         row.Terminal     = Clone(m.TerminalSettings ?? new());
-        row.AgentMail    = Clone(m.AgentMail        ?? new());
+        // TODO(multi-tenancy): AgentMail moved to GlobalAgentMailSettings
         row.Security     = Clone(m.Security         ?? new());
         row.UpdatedAtUtc = DateTime.UtcNow;
     }

@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json;
+using Pulse.Data.Entities;
 
 namespace Pulse.Models;
 
@@ -9,9 +10,11 @@ namespace Pulse.Models;
 /// Embeddings are serialised as JSON alongside the text so the service
 /// can do in-memory cosine search without a dedicated vector store.
 /// </summary>
-public class AgentMemory
+public class AgentMemory : ITenantOwned
 {
     public int Id { get; set; }
+
+    public Guid TenantId { get; set; }
 
     [Required, MaxLength(450)]
     public string UserId { get; set; } = "";

@@ -1,10 +1,13 @@
 using System.ComponentModel.DataAnnotations;
+using Pulse.Data.Entities;
 
 namespace Pulse.Models;
 
-public class WorkflowDefinition
+public class WorkflowDefinition : ITenantOwned
 {
     public int Id { get; set; }
+
+    public Guid TenantId { get; set; }
 
     [Required, MaxLength(450)]
     public string UserId { get; set; } = "";

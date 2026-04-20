@@ -68,7 +68,6 @@ public sealed class LlmSettingsSeeder
             LogoFileName = source.LogoFileName,
             LogoVersion  = source.LogoVersion,
             Terminal     = source.TerminalSettings ?? new(),
-            AgentMail    = source.AgentMail        ?? new(),
             Security     = source.Security         ?? new(),
             UpdatedAtUtc = DateTime.UtcNow,
         });

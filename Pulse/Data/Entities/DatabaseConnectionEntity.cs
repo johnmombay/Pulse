@@ -2,8 +2,9 @@ using Pulse.Models;
 
 namespace Pulse.Data.Entities;
 
-public class DatabaseConnectionEntity
+public class DatabaseConnectionEntity : ITenantOwned
 {
+    public Guid TenantId { get; set; }
     /// <summary>Logical connection ID (formerly the dictionary key).</summary>
     public string           Id               { get; set; } = "";
     public string           Label            { get; set; } = "";

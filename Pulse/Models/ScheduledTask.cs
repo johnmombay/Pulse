@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Pulse.Data.Entities;
 
 namespace Pulse.Models;
 
@@ -7,9 +8,11 @@ namespace Pulse.Models;
 /// The agent runs the <see cref="Instructions"/> on the specified cadence
 /// and delivers the result to the dashboard and/or an email address.
 /// </summary>
-public class ScheduledTask
+public class ScheduledTask : ITenantOwned
 {
     public int    Id           { get; set; }
+
+    public Guid TenantId { get; set; }
 
     [Required, MaxLength(450)]
     public string UserId       { get; set; } = "";

@@ -36,6 +36,7 @@ namespace Pulse.Data
 
 			builder.Entity<AgentMemory>(e =>
 			{
+				e.HasIndex(m => m.TenantId);
 				e.HasIndex(m => m.UserId);
 				e.HasIndex(m => new { m.UserId, m.IsActive });
 				e.Property(m => m.EmbeddingJson).HasColumnType("nvarchar(max)");
@@ -43,6 +44,7 @@ namespace Pulse.Data
 
 			builder.Entity<ChatMessageEntity>(e =>
 			{
+				e.HasIndex(m => m.TenantId);
 				e.HasIndex(m => m.UserId);
 				e.HasIndex(m => new { m.UserId, m.SessionId, m.Timestamp });
 				e.Property(m => m.Content).HasColumnType("nvarchar(max)");
@@ -58,6 +60,7 @@ namespace Pulse.Data
 
 			builder.Entity<ScheduledTask>(e =>
 			{
+				e.HasIndex(t => t.TenantId);
 				e.HasIndex(t => t.UserId);
 				e.HasIndex(t => new { t.UserId, t.IsEnabled });
 				e.Property(t => t.Instructions).HasColumnType("nvarchar(max)");
@@ -70,6 +73,7 @@ namespace Pulse.Data
 
 			builder.Entity<ScheduledTaskResult>(e =>
 			{
+				e.HasIndex(r => r.TenantId);
 				e.HasIndex(r => r.UserId);
 				e.HasIndex(r => new { r.UserId, r.IsRead });
 				e.HasIndex(r => r.ScheduledTaskId);
@@ -80,11 +84,11 @@ namespace Pulse.Data
 				 .OnDelete(DeleteBehavior.Cascade);
 			});
 
-			// ── AppSettings (singleton row, Id = 1) ──────────────────────────────
+			// ── AppSettings (one row per tenant) ────────────────────────────────
 			builder.Entity<AppSettingsEntity>(e =>
 			{
 				e.Property(s => s.Id).ValueGeneratedNever();
-				e.ToTable(t => t.HasCheckConstraint("CK_AppSettings_Singleton", "[Id] = 1"));
+				e.HasIndex(a => a.TenantId).IsUnique();
 				e.Property(s => s.AppName).HasMaxLength(200);
 				e.Property(s => s.ModelId).HasMaxLength(200);
 				e.Property(s => s.LogoFileName).HasMaxLength(260);
@@ -97,14 +101,6 @@ namespace Pulse.Data
 					t.Property(p => p.IsEnabled).HasColumnName("Terminal_IsEnabled");
 					t.Property(p => p.TimeoutSeconds).HasColumnName("Terminal_TimeoutSeconds");
 					t.Property(p => p.MaxOutputLength).HasColumnName("Terminal_MaxOutputLength");
-				});
-
-				e.OwnsOne(s => s.AgentMail, a =>
-				{
-					a.Property(p => p.IsEnabled).HasColumnName("AgentMail_IsEnabled");
-					a.Property(p => p.ApiKey).HasColumnName("AgentMail_ApiKey").HasMaxLength(500);
-					a.Property(p => p.BaseUrl).HasColumnName("AgentMail_BaseUrl").HasMaxLength(500);
-					a.Property(p => p.DefaultInbox).HasColumnName("AgentMail_DefaultInbox").HasMaxLength(200);
 				});
 
 				e.OwnsOne(s => s.Security, sc =>
@@ -122,6 +118,7 @@ namespace Pulse.Data
 
 			builder.Entity<McpServerEntity>(e =>
 			{
+				e.HasIndex(m => m.TenantId);
 				e.Property(m => m.Id).HasMaxLength(64);
 				e.Property(m => m.Name).HasMaxLength(200);
 				e.Property(m => m.TransportType).HasMaxLength(20);
@@ -132,6 +129,7 @@ namespace Pulse.Data
 
 			builder.Entity<SkillEntity>(e =>
 			{
+				e.HasIndex(s => s.TenantId);
 				e.Property(s => s.Id).HasMaxLength(64);
 				e.Property(s => s.Name).HasMaxLength(200);
 				e.Property(s => s.Icon).HasMaxLength(16);
@@ -141,6 +139,7 @@ namespace Pulse.Data
 
 			builder.Entity<RagDocumentEntity>(e =>
 			{
+				e.HasIndex(r => r.TenantId);
 				e.Property(r => r.Id).HasMaxLength(64);
 				e.Property(r => r.Name).HasMaxLength(200);
 				e.Property(r => r.Description).HasMaxLength(1000);
@@ -149,6 +148,7 @@ namespace Pulse.Data
 
 			builder.Entity<FlatFileSourceEntity>(e =>
 			{
+				e.HasIndex(f => f.TenantId);
 				e.Property(f => f.Id).HasMaxLength(60);
 				e.Property(f => f.Label).HasMaxLength(200);
 				e.Property(f => f.FilePath).HasMaxLength(500);
@@ -160,10 +160,21 @@ namespace Pulse.Data
 
 			builder.Entity<DatabaseConnectionEntity>(e =>
 			{
+				e.HasIndex(d => d.TenantId);
 				e.Property(d => d.Id).HasMaxLength(128);
 				e.Property(d => d.Label).HasMaxLength(200);
 				e.Property(d => d.ConnectionString).HasColumnType("nvarchar(max)");
 				e.Property(d => d.AllowedSchemasJson).HasColumnType("nvarchar(max)");
+			});
+
+			builder.Entity<WorkflowDefinition>(e =>
+			{
+				e.HasIndex(w => w.TenantId);
+			});
+
+			builder.Entity<WorkflowRun>(e =>
+			{
+				e.HasIndex(w => w.TenantId);
 			});
 
 			// ── Multi-tenancy ─────────────────────────────────────────────────────
