@@ -2,10 +2,11 @@
 @using System.Text.RegularExpressions
 @using System.Text.Json
 @inject Pulse.Services.LlmSettingsService _appSettings
+@inject Pulse.Infrastructure.ITenantContext _tenantCtx
 @{
     ViewData["Title"]     = "Dashboard";
     ViewData["BodyClass"] = "container-fluid px-3 px-lg-4";
-    var _appName    = _appSettings.Get().AppName ?? "Pulse";
+    var _appName    = (await _appSettings.GetAsync(_tenantCtx.TenantId ?? Guid.Empty)).AppName ?? "Pulse";
     var alerts      = ViewBag.RecentAlerts as List<ScheduledTaskResult> ?? [];
     var unreadCount = (int)(ViewBag.UnreadCount ?? 0);
     var isAuth      = User.Identity?.IsAuthenticated == true;

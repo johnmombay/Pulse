@@ -1,6 +1,7 @@
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.Google;
+using Pulse.Infrastructure;
 
 namespace Pulse.Services;
 
@@ -12,6 +13,7 @@ namespace Pulse.Services;
 public sealed class ScheduledAgentRunner(
     GeminiKeyRotationService keyRotation,
     LlmSettingsService llmSettings,
+    ITenantContext tenantContext,
     DatabaseToolsPlugin databaseToolsPlugin,
     PdfGeneratorPlugin pdfGeneratorPlugin,
     WordGeneratorPlugin wordGeneratorPlugin,
@@ -26,7 +28,7 @@ public sealed class ScheduledAgentRunner(
     {
         try
         {
-            var settings = llmSettings.Get();
+            var settings = await llmSettings.GetAsync(tenantContext.TenantId ?? Guid.Empty);
             await keyRotation.EnforceRateLimitAsync(ct);
             var apiKey = keyRotation.GetNextKey(settings.ApiKeys);
 

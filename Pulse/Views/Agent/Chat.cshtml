@@ -1,11 +1,12 @@
 @inject Pulse.Services.LlmSettingsService _appSettings
+@inject Pulse.Infrastructure.ITenantContext _tenantCtx
 @{
     ViewData["Title"]      = "AI Agent";
     ViewData["BodyClass"]  = "container-fluid p-0";
     ViewData["MainClass"]  = "";
     var sessionId = ViewData["SessionId"]?.ToString() ?? Guid.NewGuid().ToString("N");
     var userId    = ViewData["UserId"]?.ToString()    ?? "";
-    var _appName  = _appSettings.Get().AppName ?? "Pulse";
+    var _appName  = (await _appSettings.GetAsync(_tenantCtx.TenantId ?? Guid.Empty)).AppName ?? "Pulse";
 }
 
 @section Styles {

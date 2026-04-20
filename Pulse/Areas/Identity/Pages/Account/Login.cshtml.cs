@@ -116,7 +116,8 @@ namespace Pulse.Areas.Identity.Pages.Account
             if (!ModelState.IsValid)
                 return Page();
 
-            var sec  = _settings.Get().Security;
+            // TODO: fix pre-auth security settings for multi-tenancy
+            var sec  = (await _settings.GetAsync(Guid.Empty)).Security;
             var user = await _userManager.FindByEmailAsync(Input.Email);
 
             // Check if already locked out before attempting sign-in

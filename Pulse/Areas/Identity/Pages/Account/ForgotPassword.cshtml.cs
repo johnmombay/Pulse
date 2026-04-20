@@ -63,8 +63,10 @@ namespace Pulse.Areas.Identity.Pages.Account
 
             var encodedUrl = HtmlEncoder.Default.Encode(callbackUrl);
             var firstName  = !string.IsNullOrWhiteSpace(user.FirstName) ? user.FirstName : Input.Email;
-            var mail       = _settings.Get().AgentMail;
-            var appName    = _settings.Get().AppName ?? "Pulse";
+            // TODO: fix pre-auth security settings for multi-tenancy
+            var _s         = await _settings.GetAsync(Guid.Empty);
+            var mail       = _s.AgentMail;
+            var appName    = _s.AppName ?? "Pulse";
 
             if (mail.IsEnabled
                 && !string.IsNullOrWhiteSpace(mail.ApiKey)

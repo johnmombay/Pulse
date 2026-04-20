@@ -1,3 +1,4 @@
+using Pulse.Infrastructure;
 using Pulse.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -9,13 +10,13 @@ namespace Pulse.Controllers;
 /// </summary>
 [Authorize]
 [Route("api/flatfile")]
-public class FlatFileController(LlmSettingsService settingsService) : Controller
+public class FlatFileController(LlmSettingsService settingsService, ITenantContext tenantContext) : Controller
 {
     /// <summary>Returns a single flat-file source by ID for the edit modal.</summary>
     [HttpGet("source/{id}")]
-    public IActionResult GetSource(string id)
+    public async Task<IActionResult> GetSource(string id)
     {
-        var src = (settingsService.Get().FlatFileSources ?? [])
+        var src = ((await settingsService.GetAsync(tenantContext.TenantId ?? Guid.Empty)).FlatFileSources ?? [])
             .FirstOrDefault(s => s.Id == id);
 
         if (src is null) return NotFound();

@@ -22,9 +22,10 @@ namespace Pulse.Areas.Identity.Pages.Account
         /// <summary>Configured lockout duration in hours from live settings.</summary>
         public int       LockoutHours { get; private set; }
 
-        public void OnGet()
+        public async Task OnGetAsync()
         {
-            LockoutHours = _settings.Get().Security.LoginLockoutHours;
+            // TODO: fix pre-auth security settings for multi-tenancy
+            LockoutHours = (await _settings.GetAsync(Guid.Empty)).Security.LoginLockoutHours;
 
             if (TempData["LockoutEnd"] is string endStr
                 && DateTime.TryParse(endStr, null,

@@ -1,9 +1,11 @@
 @inject Pulse.Services.LlmSettingsService _appSettings
+@inject Pulse.Infrastructure.ITenantContext _tenantCtx
 @{
-    var _logoFile = _appSettings.Get().LogoFileName;
-    var _logoVer  = _appSettings.Get().LogoVersion;
+    var _settings = await _appSettings.GetAsync(_tenantCtx.TenantId ?? Guid.Empty);
+    var _logoFile = _settings.LogoFileName;
+    var _logoVer  = _settings.LogoVersion;
     var _hasLogo  = !string.IsNullOrEmpty(_logoFile);
-    var _appName  = _appSettings.Get().AppName ?? "Pulse";
+    var _appName  = _settings.AppName ?? "Pulse";
 }
 
 <div class="d-flex align-items-center gap-2 mb-4">

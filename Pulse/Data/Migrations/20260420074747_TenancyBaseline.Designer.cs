@@ -12,8 +12,8 @@ using Pulse.Data;
 namespace Pulse.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260419151933_AddLlmSettingsTables")]
-    partial class AddLlmSettingsTables
+    [Migration("20260420074747_TenancyBaseline")]
+    partial class TenancyBaseline
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -105,12 +105,10 @@ namespace Pulse.Data.Migrations
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserLogin<string>", b =>
                 {
                     b.Property<string>("LoginProvider")
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("ProviderKey")
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("ProviderDisplayName")
                         .HasColumnType("nvarchar(max)");
@@ -147,12 +145,10 @@ namespace Pulse.Data.Migrations
                         .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("LoginProvider")
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("Name")
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("Value")
                         .HasColumnType("nvarchar(max)");
@@ -208,15 +204,18 @@ namespace Pulse.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
 
-                    b.ToTable("AppSettings", t =>
-                        {
-                            t.HasCheckConstraint("CK_AppSettings_Singleton", "[Id] = 1");
-                        });
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("AppSettings");
                 });
 
             modelBuilder.Entity("Pulse.Data.Entities.DatabaseConnectionEntity", b =>
@@ -250,7 +249,12 @@ namespace Pulse.Data.Migrations
                     b.Property<bool>("ReadOnly")
                         .HasColumnType("bit");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
 
                     b.ToTable("DatabaseConnections");
                 });
@@ -300,9 +304,55 @@ namespace Pulse.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.HasKey("Id");
 
+                    b.HasIndex("TenantId");
+
                     b.ToTable("FlatFileSources");
+                });
+
+            modelBuilder.Entity("Pulse.Data.Entities.GlobalAgentMailSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ApiBaseUrl")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ApiKey")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("DefaultInbox")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("FromAddress")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("FromName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("GlobalAgentMailSettings", t =>
+                        {
+                            t.HasCheckConstraint("CK_GlobalAgentMailSettings_Singleton", "[Id] = 1");
+                        });
                 });
 
             modelBuilder.Entity("Pulse.Data.Entities.McpServerEntity", b =>
@@ -327,6 +377,9 @@ namespace Pulse.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("TransportType")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -337,6 +390,8 @@ namespace Pulse.Data.Migrations
                         .HasColumnType("nvarchar(500)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
 
                     b.ToTable("McpServers");
                 });
@@ -367,10 +422,15 @@ namespace Pulse.Data.Migrations
                         .HasMaxLength(260)
                         .HasColumnType("nvarchar(260)");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
 
                     b.ToTable("RagDocuments");
                 });
@@ -403,9 +463,46 @@ namespace Pulse.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.HasKey("Id");
 
+                    b.HasIndex("TenantId");
+
                     b.ToTable("Skills");
+                });
+
+            modelBuilder.Entity("Pulse.Data.Entities.Tenant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.HasIndex("Slug")
+                        .IsUnique();
+
+                    b.ToTable("Tenants");
                 });
 
             modelBuilder.Entity("Pulse.Models.AgentMemory", b =>
@@ -442,6 +539,9 @@ namespace Pulse.Data.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("nvarchar(10)");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
@@ -451,6 +551,8 @@ namespace Pulse.Data.Migrations
                         .HasColumnType("nvarchar(450)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
 
                     b.HasIndex("UserId");
 
@@ -512,6 +614,9 @@ namespace Pulse.Data.Migrations
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<bool>("TwoFactorEnabled")
                         .HasColumnType("bit");
 
@@ -528,6 +633,8 @@ namespace Pulse.Data.Migrations
                         .IsUnique()
                         .HasDatabaseName("UserNameIndex")
                         .HasFilter("[NormalizedUserName] IS NOT NULL");
+
+                    b.HasIndex("TenantId");
 
                     b.ToTable("AspNetUsers", (string)null);
                 });
@@ -552,6 +659,9 @@ namespace Pulse.Data.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("Timestamp")
                         .HasColumnType("datetime2");
 
@@ -560,6 +670,8 @@ namespace Pulse.Data.Migrations
                         .HasColumnType("nvarchar(450)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
 
                     b.HasIndex("UserId");
 
@@ -620,6 +732,9 @@ namespace Pulse.Data.Migrations
                     b.Property<DateTime?>("ScheduledAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -637,6 +752,8 @@ namespace Pulse.Data.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
 
                     b.HasIndex("UserId");
 
@@ -676,6 +793,9 @@ namespace Pulse.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("UserId")
                         .IsRequired()
                         .HasMaxLength(450)
@@ -684,6 +804,8 @@ namespace Pulse.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ScheduledTaskId");
+
+                    b.HasIndex("TenantId");
 
                     b.HasIndex("UserId");
 
@@ -710,6 +832,9 @@ namespace Pulse.Data.Migrations
                     b.Property<bool>("IsEnabled")
                         .HasColumnType("bit");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -724,6 +849,8 @@ namespace Pulse.Data.Migrations
                         .HasColumnType("nvarchar(450)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
 
                     b.ToTable("WorkflowDefinitions");
                 });
@@ -750,6 +877,9 @@ namespace Pulse.Data.Migrations
                     b.Property<string>("StopReason")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("UserId")
                         .IsRequired()
                         .HasMaxLength(450)
@@ -764,6 +894,8 @@ namespace Pulse.Data.Migrations
                         .HasColumnType("nvarchar(200)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
 
                     b.HasIndex("WorkflowDefinitionId");
 
@@ -912,41 +1044,6 @@ namespace Pulse.Data.Migrations
 
             modelBuilder.Entity("Pulse.Data.Entities.AppSettingsEntity", b =>
                 {
-                    b.OwnsOne("Pulse.Models.AgentMailSettings", "AgentMail", b1 =>
-                        {
-                            b1.Property<int>("AppSettingsEntityId")
-                                .HasColumnType("int");
-
-                            b1.Property<string>("ApiKey")
-                                .IsRequired()
-                                .HasMaxLength(500)
-                                .HasColumnType("nvarchar(500)")
-                                .HasColumnName("AgentMail_ApiKey");
-
-                            b1.Property<string>("BaseUrl")
-                                .IsRequired()
-                                .HasMaxLength(500)
-                                .HasColumnType("nvarchar(500)")
-                                .HasColumnName("AgentMail_BaseUrl");
-
-                            b1.Property<string>("DefaultInbox")
-                                .IsRequired()
-                                .HasMaxLength(200)
-                                .HasColumnType("nvarchar(200)")
-                                .HasColumnName("AgentMail_DefaultInbox");
-
-                            b1.Property<bool>("IsEnabled")
-                                .HasColumnType("bit")
-                                .HasColumnName("AgentMail_IsEnabled");
-
-                            b1.HasKey("AppSettingsEntityId");
-
-                            b1.ToTable("AppSettings");
-
-                            b1.WithOwner()
-                                .HasForeignKey("AppSettingsEntityId");
-                        });
-
                     b.OwnsOne("Pulse.Models.SecuritySettings", "Security", b1 =>
                         {
                             b1.Property<int>("AppSettingsEntityId")
@@ -1005,14 +1102,21 @@ namespace Pulse.Data.Migrations
                                 .HasForeignKey("AppSettingsEntityId");
                         });
 
-                    b.Navigation("AgentMail")
-                        .IsRequired();
-
                     b.Navigation("Security")
                         .IsRequired();
 
                     b.Navigation("Terminal")
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Pulse.Models.ApplicationUser", b =>
+                {
+                    b.HasOne("Pulse.Data.Entities.Tenant", "Tenant")
+                        .WithMany("Users")
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Tenant");
                 });
 
             modelBuilder.Entity("Pulse.Models.ScheduledTask", b =>
@@ -1073,6 +1177,11 @@ namespace Pulse.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("WorkflowRun");
+                });
+
+            modelBuilder.Entity("Pulse.Data.Entities.Tenant", b =>
+                {
+                    b.Navigation("Users");
                 });
 
             modelBuilder.Entity("Pulse.Models.ScheduledTask", b =>
