@@ -136,6 +136,11 @@ builder.Services.AddHttpClient("AgentMail")
 builder.Services.AddTransient<AgentMailService>();
 builder.Services.AddTransient<AgentMailPlugin>();
 
+// Bridge ASP.NET Core Identity's IEmailSender to AgentMail so account
+// confirmation / password reset emails are actually delivered.
+builder.Services.AddTransient<Microsoft.AspNetCore.Identity.UI.Services.IEmailSender,
+	AgentMailEmailSender>();
+
 // ── File extraction ───────────────────────────────────────────────────────────
 builder.Services.AddTransient<FileExtractionService>();
 
