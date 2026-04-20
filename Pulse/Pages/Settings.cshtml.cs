@@ -1,3 +1,4 @@
+using Pulse.Infrastructure;
 using Pulse.Models;
 using Pulse.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -14,8 +15,12 @@ public class SettingsModel(
     RagService ragService,
     MemoryService memoryService,
     IDatabaseTools databaseTools,
-    IWebHostEnvironment env) : PageModel
+    IWebHostEnvironment env,
+    ITenantContext tenantContext) : PageModel
 {
+    // TODO(multi-tenancy): Admin settings pages should validate the user belongs to this tenant.
+    private Guid TenantId => tenantContext.TenantId ?? Guid.Empty;
+
     // ── LLM ──────────────────────────────────────────────────────────────────
     [BindProperty]
     public LlmInput Input { get; set; } = new();
@@ -153,7 +158,7 @@ public class SettingsModel(
             .ToList();
 
         var current = settingsService.Get();
-        await settingsService.SaveAsync(new LlmSettingsModel
+        await settingsService.SaveAsync(TenantId, new LlmSettingsModel
         {
             AppName             = current.AppName ?? "Pulse",
             ModelId             = Input.ModelId.Trim(),
@@ -202,7 +207,7 @@ public class SettingsModel(
                 IsEnabled     = McpServer.IsEnabled
             };
 
-            await settingsService.AddOrUpdateMcpServerAsync(config);
+            await settingsService.AddOrUpdateMcpServerAsync(TenantId, config);
 
             return new JsonResult(new
             {
@@ -222,7 +227,7 @@ public class SettingsModel(
     // ── MCP: delete ───────────────────────────────────────────────────────────
     public async Task<IActionResult> OnPostDeleteMcpAsync(string id)
     {
-        await settingsService.DeleteMcpServerAsync(id);
+        await settingsService.DeleteMcpServerAsync(TenantId, id);
         TempData["McpSuccess"] = "MCP server removed.";
         return RedirectToPage();
     }
@@ -230,7 +235,7 @@ public class SettingsModel(
     // ── MCP: toggle enabled ───────────────────────────────────────────────────
     public async Task<IActionResult> OnPostToggleMcpAsync(string id)
     {
-        await settingsService.ToggleMcpServerAsync(id);
+        await settingsService.ToggleMcpServerAsync(TenantId, id);
         return RedirectToPage();
     }
 
@@ -256,7 +261,7 @@ public class SettingsModel(
                 IsActive     = Skill.IsActive
             };
 
-            await settingsService.AddOrUpdateSkillAsync(config);
+            await settingsService.AddOrUpdateSkillAsync(TenantId, config);
 
             return new JsonResult(new
             {
@@ -276,7 +281,7 @@ public class SettingsModel(
     // ── Skills: delete ────────────────────────────────────────────────────────
     public async Task<IActionResult> OnPostDeleteSkillAsync(string id)
     {
-        await settingsService.DeleteSkillAsync(id);
+        await settingsService.DeleteSkillAsync(TenantId, id);
         TempData["SkillSuccess"] = "Skill removed.";
         return RedirectToPage();
     }
@@ -284,7 +289,7 @@ public class SettingsModel(
     // ── Skills: toggle active ─────────────────────────────────────────────────
     public async Task<IActionResult> OnPostToggleSkillAsync(string id)
     {
-        await settingsService.ToggleSkillAsync(id);
+        await settingsService.ToggleSkillAsync(TenantId, id);
         return RedirectToPage();
     }
 
@@ -354,7 +359,7 @@ public class SettingsModel(
                 UpdatedAt        = DateTime.UtcNow
             };
 
-            await settingsService.AddOrUpdateRagDocumentAsync(doc);
+            await settingsService.AddOrUpdateRagDocumentAsync(TenantId, doc);
 
             var verb = isNew ? "added" : "updated";
             return new JsonResult(new
@@ -377,7 +382,7 @@ public class SettingsModel(
     public async Task<IActionResult> OnPostDeleteRagAsync(string id)
     {
         ragService.DeleteDocument(id);
-        await settingsService.DeleteRagDocumentAsync(id);
+        await settingsService.DeleteRagDocumentAsync(TenantId, id);
         TempData["RagSuccess"] = "RAG document removed.";
         return RedirectToPage();
     }
@@ -385,7 +390,7 @@ public class SettingsModel(
     // ── RAG: toggle enabled ───────────────────────────────────────────────────
     public async Task<IActionResult> OnPostToggleRagAsync(string id)
     {
-        await settingsService.ToggleRagDocumentAsync(id);
+        await settingsService.ToggleRagDocumentAsync(TenantId, id);
         return RedirectToPage();
     }
 
@@ -414,7 +419,7 @@ public class SettingsModel(
                     .ToList()
             };
 
-            await settingsService.AddOrUpdateDatabaseConnectionAsync(id, entry);
+            await settingsService.AddOrUpdateDatabaseConnectionAsync(TenantId, id, entry);
 
             return new JsonResult(new
             {
@@ -432,7 +437,7 @@ public class SettingsModel(
     // ── Database Connections: delete ─────────────────────────────────────────
     public async Task<IActionResult> OnPostDeleteDbConnAsync(string id)
     {
-        await settingsService.DeleteDatabaseConnectionAsync(id);
+        await settingsService.DeleteDatabaseConnectionAsync(TenantId, id);
         TempData["DbConnSuccess"] = $"Connection \"{id}\" removed.";
         return RedirectToPage();
     }
@@ -440,7 +445,7 @@ public class SettingsModel(
     // ── Database Connections: toggle enabled ─────────────────────────────────
     public async Task<IActionResult> OnPostToggleDbConnAsync(string id)
     {
-        await settingsService.ToggleDatabaseConnectionAsync(id);
+        await settingsService.ToggleDatabaseConnectionAsync(TenantId, id);
         return RedirectToPage();
     }
 
@@ -524,7 +529,7 @@ public class SettingsModel(
                 FixedWidthColumns = ParseFixedWidthSpec(FlatFile.FixedWidthSpec),
             };
 
-            await settingsService.AddOrUpdateFlatFileSourceAsync(src);
+            await settingsService.AddOrUpdateFlatFileSourceAsync(TenantId, src);
             return new JsonResult(new
             {
                 success  = true,
@@ -543,7 +548,7 @@ public class SettingsModel(
     // ── Flat-file data sources: delete ────────────────────────────────────────
     public async Task<IActionResult> OnPostDeleteFlatFileAsync(string id)
     {
-        await settingsService.DeleteFlatFileSourceAsync(id);
+        await settingsService.DeleteFlatFileSourceAsync(TenantId, id);
         TempData["FlatFileSuccess"] = "Data source removed.";
         return RedirectToPage();
     }
@@ -551,7 +556,7 @@ public class SettingsModel(
     // ── Flat-file data sources: toggle ────────────────────────────────────────
     public async Task<IActionResult> OnPostToggleFlatFileAsync(string id)
     {
-        await settingsService.ToggleFlatFileSourceAsync(id);
+        await settingsService.ToggleFlatFileSourceAsync(TenantId, id);
         return RedirectToPage();
     }
 
@@ -662,7 +667,7 @@ public class SettingsModel(
             // Persist updated chunk count
             doc.ChunkCount = chunkCount;
             doc.UpdatedAt  = DateTime.UtcNow;
-            await settingsService.AddOrUpdateRagDocumentAsync(doc);
+            await settingsService.AddOrUpdateRagDocumentAsync(TenantId, doc);
 
             return new JsonResult(new
             {
@@ -773,7 +778,7 @@ public class SettingsModel(
         await using (var src = LogoUpload.OpenReadStream())
             await src.CopyToAsync(fs, HttpContext.RequestAborted);
 
-        await settingsService.SaveLogoAsync("app-logo.png");
+        await settingsService.SaveLogoAsync(TenantId, "app-logo.png");
         TempData["LogoSuccess"] = "Logo uploaded successfully.";
         return RedirectToPage();
     }
@@ -785,7 +790,7 @@ public class SettingsModel(
         if (System.IO.File.Exists(filePath))
             System.IO.File.Delete(filePath);
 
-        await settingsService.SaveLogoAsync(null);
+        await settingsService.SaveLogoAsync(TenantId, null);
         TempData["LogoSuccess"] = "Custom logo removed. Default logo restored.";
         return RedirectToPage();
     }
@@ -815,7 +820,7 @@ public class SettingsModel(
             TimeoutSeconds   = Math.Clamp(Terminal.TimeoutSeconds,  5, 300),
             MaxOutputLength  = Math.Clamp(Terminal.MaxOutputLength, 1000, 100_000),
         };
-        await settingsService.SaveTerminalSettingsAsync(model);
+        await settingsService.SaveTerminalSettingsAsync(TenantId, model);
         TempData["TerminalSuccess"] = "Terminal settings saved.";
         return RedirectToPage();
     }
@@ -845,7 +850,7 @@ public class SettingsModel(
             MaxFailedLoginAttempts = Math.Clamp(Security.MaxFailedLoginAttempts, 1, 20),
             LoginLockoutHours      = Math.Clamp(Security.LoginLockoutHours,      1, 168),
         };
-        await settingsService.SaveSecuritySettingsAsync(model);
+        await settingsService.SaveSecuritySettingsAsync(TenantId, model);
         TempData["SecuritySuccess"] = "Security settings saved.";
         return RedirectToPage();
     }
@@ -855,7 +860,7 @@ public class SettingsModel(
     {
         var name = AppName?.Trim();
         if (string.IsNullOrWhiteSpace(name)) name = "Pulse";
-        await settingsService.SaveAppNameAsync(name);
+        await settingsService.SaveAppNameAsync(TenantId, name);
         TempData["AppNameSuccess"] = $"App name saved as \"{name}\"."; 
         return RedirectToPage();
     }

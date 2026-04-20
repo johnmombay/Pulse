@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Pulse.Data;
 using Pulse.Data.Entities;
 using Pulse.Models;
@@ -7,271 +8,323 @@ using System.Text.Json;
 namespace Pulse.Services;
 
 /// <summary>
-/// Singleton service that persists all app settings to SQL Server (migrated from llm-settings.json).
-/// Callers get a cached <see cref="LlmSettingsModel"/> via <see cref="Get"/>; every mutation rewrites
-/// the relevant rows in one transaction and refreshes the cache.
+/// Singleton service that persists all app settings to SQL Server, one row per tenant.
+/// Uses <see cref="IMemoryCache"/> keyed by <see cref="Guid"/> tenantId with a 5-minute
+/// sliding expiration. All mutating methods accept a <paramref name="tenantId"/> and
+/// invalidate the relevant cache entry after persisting.
 /// </summary>
 public sealed class LlmSettingsService
 {
     private readonly IDbContextFactory<ApplicationDbContext> _dbFactory;
-    private volatile LlmSettingsModel _cached = new();
-    private readonly SemaphoreSlim _lock = new(1, 1);
+    private readonly IMemoryCache _cache;
 
-    public LlmSettingsService(IDbContextFactory<ApplicationDbContext> dbFactory)
+    private static string CacheKey(Guid tenantId) => $"LlmSettings_{tenantId:N}";
+
+    private static readonly MemoryCacheEntryOptions CacheOptions = new MemoryCacheEntryOptions()
+        .SetSlidingExpiration(TimeSpan.FromMinutes(5));
+
+    public LlmSettingsService(
+        IDbContextFactory<ApplicationDbContext> dbFactory,
+        IMemoryCache cache)
     {
         _dbFactory = dbFactory;
-        // Initial cache load — synchronous to preserve previous startup contract.
-        _cached = LoadFromDbAsync().GetAwaiter().GetResult();
+        _cache     = cache;
     }
 
-    /// <summary>Returns the cached settings (never null).</summary>
-    public LlmSettingsModel Get() => _cached;
+    // ── Read ────────────────────────────────────────────────────────────────────
 
-    /// <summary>Rebuilds the in-memory cache from the database. Call after external seeding.</summary>
-    public async Task ReloadAsync()
+    /// <summary>
+    /// Returns the cached <see cref="LlmSettingsModel"/> for the given tenant.
+    /// Loads from DB on first call; subsequent calls return the cached copy.
+    /// </summary>
+    public async Task<LlmSettingsModel> GetAsync(Guid tenantId)
     {
-        await _lock.WaitAsync();
-        try { _cached = await LoadFromDbAsync(); }
-        finally { _lock.Release(); }
+        var key = CacheKey(tenantId);
+        if (_cache.TryGetValue(key, out LlmSettingsModel? cached) && cached != null)
+            return cached;
+
+        var loaded = await LoadFromDbAsync(tenantId);
+        _cache.Set(key, loaded, CacheOptions);
+        return loaded;
     }
 
-    // ── Full replace (used by admin bulk save) ───────────────────────────────
+    /// <summary>
+    /// Synchronous no-arg overload kept for callers not yet migrated to the per-tenant API.
+    /// Throws <see cref="InvalidOperationException"/> — callers must be updated to pass tenantId.
+    /// </summary>
+    [Obsolete("Use GetAsync(Guid tenantId) instead. This overload will be removed once all callers are migrated.")]
+    public LlmSettingsModel Get()
+        => throw new InvalidOperationException(
+            "LlmSettingsService.Get() requires a TenantId. Use GetAsync(tenantId) instead.");
 
-    public async Task SaveAsync(LlmSettingsModel model)
+    /// <summary>Rebuilds the cache entry for a tenant. No-op if tenantId is empty.</summary>
+    public async Task ReloadAsync(Guid tenantId = default)
     {
-        await _lock.WaitAsync();
-        try
+        if (tenantId == Guid.Empty) return;
+        var loaded = await LoadFromDbAsync(tenantId);
+        _cache.Set(CacheKey(tenantId), loaded, CacheOptions);
+    }
+
+    /// <summary>Removes a tenant's settings from the in-memory cache.</summary>
+    public void InvalidateCache(Guid tenantId)
+        => _cache.Remove(CacheKey(tenantId));
+
+    // ── Full replace (admin bulk save) ─────────────────────────────────────────
+
+    public async Task SaveAsync(Guid tenantId, LlmSettingsModel model)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        await using var tx = await db.Database.BeginTransactionAsync();
+
+        var row = await db.AppSettings
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(s => s.TenantId == tenantId);
+
+        if (row is null)
         {
-            await using var db = await _dbFactory.CreateDbContextAsync();
-            await using var tx = await db.Database.BeginTransactionAsync();
-
-            var row = await db.AppSettings.FirstOrDefaultAsync();
-            if (row is null)
-            {
-                row = new AppSettingsEntity { Id = 1 };
-                db.AppSettings.Add(row);
-            }
-            ApplyScalars(row, model);
-
-            // Replace collections wholesale.
-            db.AppApiKeys.RemoveRange(db.AppApiKeys);
-            db.McpServers.RemoveRange(db.McpServers);
-            db.Skills.RemoveRange(db.Skills);
-            db.RagDocuments.RemoveRange(db.RagDocuments);
-            db.FlatFileSources.RemoveRange(db.FlatFileSources);
-            db.DatabaseConnections.RemoveRange(db.DatabaseConnections);
-            await db.SaveChangesAsync();
-
-            db.AppApiKeys.AddRange((model.ApiKeys ?? []).Select((k, i) => new AppApiKeyEntity { Key = k, SortOrder = i }));
-            db.McpServers.AddRange((model.McpServers ?? []).Select(ToEntity));
-            db.Skills.AddRange((model.Skills ?? []).Select(ToEntity));
-            db.RagDocuments.AddRange((model.RagDocuments ?? []).Select(ToEntity));
-            db.FlatFileSources.AddRange((model.FlatFileSources ?? []).Select(ToEntity));
-            db.DatabaseConnections.AddRange(
-                (model.DatabaseConnections ?? new(StringComparer.OrdinalIgnoreCase))
-                    .Select(kv => ToEntity(kv.Key, kv.Value)));
-
-            await db.SaveChangesAsync();
-            await tx.CommitAsync();
-
-            _cached = await LoadFromDbAsync(db);
+            row = new AppSettingsEntity { TenantId = tenantId };
+            db.AppSettings.Add(row);
         }
-        finally { _lock.Release(); }
+        ApplyScalars(row, model);
+
+        // Replace collections for this tenant wholesale.
+        // TODO(multi-tenancy): AppApiKeyEntity has no TenantId yet; removes all keys.
+        var apiKeys = await db.AppApiKeys.ToListAsync();
+        var mcpServers = await db.McpServers.IgnoreQueryFilters()
+            .Where(m => m.TenantId == tenantId).ToListAsync();
+        var skills = await db.Skills.IgnoreQueryFilters()
+            .Where(s => s.TenantId == tenantId).ToListAsync();
+        var ragDocs = await db.RagDocuments.IgnoreQueryFilters()
+            .Where(r => r.TenantId == tenantId).ToListAsync();
+        var flatFiles = await db.FlatFileSources.IgnoreQueryFilters()
+            .Where(f => f.TenantId == tenantId).ToListAsync();
+        var dbConns = await db.DatabaseConnections.IgnoreQueryFilters()
+            .Where(d => d.TenantId == tenantId).ToListAsync();
+
+        db.AppApiKeys.RemoveRange(apiKeys);
+        db.McpServers.RemoveRange(mcpServers);
+        db.Skills.RemoveRange(skills);
+        db.RagDocuments.RemoveRange(ragDocs);
+        db.FlatFileSources.RemoveRange(flatFiles);
+        db.DatabaseConnections.RemoveRange(dbConns);
+        await db.SaveChangesAsync();
+
+        // TODO(multi-tenancy): AppApiKeyEntity does not yet have TenantId; keys are shared across tenants for now.
+        db.AppApiKeys.AddRange((model.ApiKeys ?? []).Select((k, i) =>
+            new AppApiKeyEntity { Key = k, SortOrder = i }));
+        db.McpServers.AddRange((model.McpServers ?? []).Select(c => ToEntity(c, tenantId)));
+        db.Skills.AddRange((model.Skills ?? []).Select(c => ToEntity(c, tenantId)));
+        db.RagDocuments.AddRange((model.RagDocuments ?? []).Select(d => ToEntity(d, tenantId)));
+        db.FlatFileSources.AddRange((model.FlatFileSources ?? []).Select(s => ToEntity(s, tenantId)));
+        db.DatabaseConnections.AddRange(
+            (model.DatabaseConnections ?? new(StringComparer.OrdinalIgnoreCase))
+                .Select(kv => ToEntity(kv.Key, kv.Value, tenantId)));
+
+        await db.SaveChangesAsync();
+        await tx.CommitAsync();
+
+        var refreshed = await LoadFromDbAsync(tenantId, db);
+        _cache.Set(CacheKey(tenantId), refreshed, CacheOptions);
     }
 
-    // ── MCP helpers ───────────────────────────────────────────────────────────
+    // ── MCP helpers ─────────────────────────────────────────────────────────────
 
-    public async Task AddOrUpdateMcpServerAsync(McpServerConfig config) =>
-        await UpsertCollectionAsync(db => db.McpServers, config.Id, e => ApplyMcp(e, config),
-            () => ToEntity(config));
+    public async Task AddOrUpdateMcpServerAsync(Guid tenantId, McpServerConfig config) =>
+        await UpsertCollectionAsync(tenantId, db => db.McpServers, config.Id,
+            e => ApplyMcp(e, config), () => ToEntity(config, tenantId));
 
-    public async Task DeleteMcpServerAsync(string id) =>
-        await DeleteCollectionAsync(db => db.McpServers, id);
+    public async Task DeleteMcpServerAsync(Guid tenantId, string id) =>
+        await DeleteCollectionAsync(tenantId, db => db.McpServers, id);
 
-    public async Task ToggleMcpServerAsync(string id) =>
-        await ToggleCollectionAsync(db => db.McpServers, id, e => e.IsEnabled = !e.IsEnabled);
+    public async Task ToggleMcpServerAsync(Guid tenantId, string id) =>
+        await ToggleCollectionAsync(tenantId, db => db.McpServers, id, e => e.IsEnabled = !e.IsEnabled);
 
-    // ── Skill helpers ─────────────────────────────────────────────────────────
+    // ── Skill helpers ────────────────────────────────────────────────────────────
 
-    public async Task AddOrUpdateSkillAsync(SkillConfig config) =>
-        await UpsertCollectionAsync(db => db.Skills, config.Id, e => ApplySkill(e, config),
-            () => ToEntity(config));
+    public async Task AddOrUpdateSkillAsync(Guid tenantId, SkillConfig config) =>
+        await UpsertCollectionAsync(tenantId, db => db.Skills, config.Id,
+            e => ApplySkill(e, config), () => ToEntity(config, tenantId));
 
-    public async Task DeleteSkillAsync(string id) =>
-        await DeleteCollectionAsync(db => db.Skills, id);
+    public async Task DeleteSkillAsync(Guid tenantId, string id) =>
+        await DeleteCollectionAsync(tenantId, db => db.Skills, id);
 
-    public async Task ToggleSkillAsync(string id) =>
-        await ToggleCollectionAsync(db => db.Skills, id, e => e.IsActive = !e.IsActive);
+    public async Task ToggleSkillAsync(Guid tenantId, string id) =>
+        await ToggleCollectionAsync(tenantId, db => db.Skills, id, e => e.IsActive = !e.IsActive);
 
-    // ── RAG helpers ───────────────────────────────────────────────────────────
+    // ── RAG helpers ──────────────────────────────────────────────────────────────
 
-    public async Task AddOrUpdateRagDocumentAsync(RagDocument doc) =>
-        await UpsertCollectionAsync(db => db.RagDocuments, doc.Id, e => ApplyRag(e, doc),
-            () => ToEntity(doc));
+    public async Task AddOrUpdateRagDocumentAsync(Guid tenantId, RagDocument doc) =>
+        await UpsertCollectionAsync(tenantId, db => db.RagDocuments, doc.Id,
+            e => ApplyRag(e, doc), () => ToEntity(doc, tenantId));
 
-    public async Task DeleteRagDocumentAsync(string id) =>
-        await DeleteCollectionAsync(db => db.RagDocuments, id);
+    public async Task DeleteRagDocumentAsync(Guid tenantId, string id) =>
+        await DeleteCollectionAsync(tenantId, db => db.RagDocuments, id);
 
-    public async Task ToggleRagDocumentAsync(string id) =>
-        await ToggleCollectionAsync(db => db.RagDocuments, id, e => e.IsEnabled = !e.IsEnabled);
+    public async Task ToggleRagDocumentAsync(Guid tenantId, string id) =>
+        await ToggleCollectionAsync(tenantId, db => db.RagDocuments, id, e => e.IsEnabled = !e.IsEnabled);
 
-    // ── Database Connection helpers ───────────────────────────────────────────
+    // ── Database Connection helpers ──────────────────────────────────────────────
 
-    public async Task AddOrUpdateDatabaseConnectionAsync(string id, DatabaseConnectionEntry entry) =>
-        await UpsertCollectionAsync(db => db.DatabaseConnections, id, e => ApplyDbConn(e, entry),
-            () => ToEntity(id, entry));
+    public async Task AddOrUpdateDatabaseConnectionAsync(Guid tenantId, string id, DatabaseConnectionEntry entry) =>
+        await UpsertCollectionAsync(tenantId, db => db.DatabaseConnections, id,
+            e => ApplyDbConn(e, entry), () => ToEntity(id, entry, tenantId));
 
-    public async Task DeleteDatabaseConnectionAsync(string id) =>
-        await DeleteCollectionAsync(db => db.DatabaseConnections, id);
+    public async Task DeleteDatabaseConnectionAsync(Guid tenantId, string id) =>
+        await DeleteCollectionAsync(tenantId, db => db.DatabaseConnections, id);
 
-    public async Task ToggleDatabaseConnectionAsync(string id) =>
-        await ToggleCollectionAsync(db => db.DatabaseConnections, id, e => e.IsEnabled = !e.IsEnabled);
+    public async Task ToggleDatabaseConnectionAsync(Guid tenantId, string id) =>
+        await ToggleCollectionAsync(tenantId, db => db.DatabaseConnections, id, e => e.IsEnabled = !e.IsEnabled);
 
-    // ── Flat-file data source helpers ─────────────────────────────────────────
+    // ── Flat-file data source helpers ────────────────────────────────────────────
 
-    public async Task AddOrUpdateFlatFileSourceAsync(FlatFileDataSource source) =>
-        await UpsertCollectionAsync(db => db.FlatFileSources, source.Id, e => ApplyFlatFile(e, source),
-            () => ToEntity(source));
+    public async Task AddOrUpdateFlatFileSourceAsync(Guid tenantId, FlatFileDataSource source) =>
+        await UpsertCollectionAsync(tenantId, db => db.FlatFileSources, source.Id,
+            e => ApplyFlatFile(e, source), () => ToEntity(source, tenantId));
 
-    public async Task DeleteFlatFileSourceAsync(string id) =>
-        await DeleteCollectionAsync(db => db.FlatFileSources, id);
+    public async Task DeleteFlatFileSourceAsync(Guid tenantId, string id) =>
+        await DeleteCollectionAsync(tenantId, db => db.FlatFileSources, id);
 
-    public async Task ToggleFlatFileSourceAsync(string id) =>
-        await ToggleCollectionAsync(db => db.FlatFileSources, id, e => e.IsEnabled = !e.IsEnabled);
+    public async Task ToggleFlatFileSourceAsync(Guid tenantId, string id) =>
+        await ToggleCollectionAsync(tenantId, db => db.FlatFileSources, id, e => e.IsEnabled = !e.IsEnabled);
 
-    // ── Scalar/owned section helpers ──────────────────────────────────────────
+    // ── Scalar/owned section helpers ─────────────────────────────────────────────
 
-    public Task SaveTerminalSettingsAsync(TerminalSettings settings) =>
-        UpdateScalarAsync(row => row.Terminal = Clone(settings));
+    public Task SaveTerminalSettingsAsync(Guid tenantId, TerminalSettings settings) =>
+        UpdateScalarAsync(tenantId, row => row.Terminal = Clone(settings));
 
     public Task SaveAgentMailSettingsAsync(AgentMailSettings settings) =>
         Task.CompletedTask; // TODO(multi-tenancy): AgentMail moved to GlobalAgentMailSettings
 
-    public Task SaveSecuritySettingsAsync(SecuritySettings settings) =>
-        UpdateScalarAsync(row => row.Security = Clone(settings));
+    public Task SaveSecuritySettingsAsync(Guid tenantId, SecuritySettings settings) =>
+        UpdateScalarAsync(tenantId, row => row.Security = Clone(settings));
 
-    public Task SaveAppNameAsync(string name) =>
-        UpdateScalarAsync(row => row.AppName = name.Trim());
+    public Task SaveAppNameAsync(Guid tenantId, string name) =>
+        UpdateScalarAsync(tenantId, row => row.AppName = name.Trim());
 
-    public Task SaveLogoAsync(string? fileName) =>
-        UpdateScalarAsync(row =>
+    public Task SaveLogoAsync(Guid tenantId, string? fileName) =>
+        UpdateScalarAsync(tenantId, row =>
         {
             row.LogoFileName = fileName;
             row.LogoVersion  = fileName is null ? null : Guid.NewGuid().ToString("N");
         });
 
-    // ── Internals: generic upsert/delete/toggle on a collection DbSet ─────────
+    // ── Internals: generic upsert/delete/toggle on a collection DbSet ───────────
 
     private async Task UpsertCollectionAsync<TEntity>(
+        Guid tenantId,
         Func<ApplicationDbContext, DbSet<TEntity>> set,
         string id,
         Action<TEntity> applyExisting,
         Func<TEntity> createNew) where TEntity : class
     {
-        await _lock.WaitAsync();
-        try
-        {
-            await using var db = await _dbFactory.CreateDbContextAsync();
-            var table = set(db);
-            var existing = await table.FindAsync(id);
-            if (existing is null)
-                table.Add(createNew());
-            else
-                applyExisting(existing);
-            await db.SaveChangesAsync();
-            _cached = await LoadFromDbAsync(db);
-        }
-        finally { _lock.Release(); }
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var table    = set(db);
+        var existing = await table.FindAsync(id);
+        if (existing is null)
+            table.Add(createNew());
+        else
+            applyExisting(existing);
+        await db.SaveChangesAsync();
+
+        var refreshed = await LoadFromDbAsync(tenantId, db);
+        _cache.Set(CacheKey(tenantId), refreshed, CacheOptions);
     }
 
     private async Task DeleteCollectionAsync<TEntity>(
-        Func<ApplicationDbContext, DbSet<TEntity>> set, string id) where TEntity : class
+        Guid tenantId,
+        Func<ApplicationDbContext, DbSet<TEntity>> set,
+        string id) where TEntity : class
     {
-        await _lock.WaitAsync();
-        try
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var table    = set(db);
+        var existing = await table.FindAsync(id);
+        if (existing is not null)
         {
-            await using var db = await _dbFactory.CreateDbContextAsync();
-            var table = set(db);
-            var existing = await table.FindAsync(id);
-            if (existing is not null)
-            {
-                table.Remove(existing);
-                await db.SaveChangesAsync();
-            }
-            _cached = await LoadFromDbAsync(db);
+            table.Remove(existing);
+            await db.SaveChangesAsync();
         }
-        finally { _lock.Release(); }
+
+        var refreshed = await LoadFromDbAsync(tenantId, db);
+        _cache.Set(CacheKey(tenantId), refreshed, CacheOptions);
     }
 
     private async Task ToggleCollectionAsync<TEntity>(
-        Func<ApplicationDbContext, DbSet<TEntity>> set, string id,
+        Guid tenantId,
+        Func<ApplicationDbContext, DbSet<TEntity>> set,
+        string id,
         Action<TEntity> toggle) where TEntity : class
     {
-        await _lock.WaitAsync();
-        try
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var existing = await set(db).FindAsync(id);
+        if (existing is not null)
         {
-            await using var db = await _dbFactory.CreateDbContextAsync();
-            var existing = await set(db).FindAsync(id);
-            if (existing is not null)
-            {
-                toggle(existing);
-                await db.SaveChangesAsync();
-            }
-            _cached = await LoadFromDbAsync(db);
-        }
-        finally { _lock.Release(); }
-    }
-
-    private async Task UpdateScalarAsync(Action<AppSettingsEntity> mutate)
-    {
-        await _lock.WaitAsync();
-        try
-        {
-            await using var db = await _dbFactory.CreateDbContextAsync();
-            var row = await db.AppSettings.FirstOrDefaultAsync();
-            if (row is null)
-            {
-                row = new AppSettingsEntity { Id = 1 };
-                db.AppSettings.Add(row);
-            }
-            mutate(row);
-            row.UpdatedAtUtc = DateTime.UtcNow;
+            toggle(existing);
             await db.SaveChangesAsync();
-            _cached = await LoadFromDbAsync(db);
         }
-        finally { _lock.Release(); }
+
+        var refreshed = await LoadFromDbAsync(tenantId, db);
+        _cache.Set(CacheKey(tenantId), refreshed, CacheOptions);
     }
 
-    // ── Cache projection ─────────────────────────────────────────────────────
+    private async Task UpdateScalarAsync(Guid tenantId, Action<AppSettingsEntity> mutate)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var row = await db.AppSettings
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(s => s.TenantId == tenantId);
 
-    private async Task<LlmSettingsModel> LoadFromDbAsync(ApplicationDbContext? db = null)
+        if (row is null)
+        {
+            row = new AppSettingsEntity { TenantId = tenantId };
+            db.AppSettings.Add(row);
+        }
+        mutate(row);
+        row.UpdatedAtUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        var refreshed = await LoadFromDbAsync(tenantId, db);
+        _cache.Set(CacheKey(tenantId), refreshed, CacheOptions);
+    }
+
+    // ── Cache projection ─────────────────────────────────────────────────────────
+
+    private async Task<LlmSettingsModel> LoadFromDbAsync(
+        Guid tenantId, ApplicationDbContext? db = null)
     {
         var own = db is null;
         db ??= await _dbFactory.CreateDbContextAsync();
         try
         {
-            var row = await db.AppSettings.AsNoTracking().FirstOrDefaultAsync();
-            var keys = await db.AppApiKeys.AsNoTracking().OrderBy(k => k.SortOrder).Select(k => k.Key).ToListAsync();
-            var mcp  = await db.McpServers.AsNoTracking().ToListAsync();
-            var sk   = await db.Skills.AsNoTracking().ToListAsync();
-            var rag  = await db.RagDocuments.AsNoTracking().ToListAsync();
-            var ff   = await db.FlatFileSources.AsNoTracking().ToListAsync();
-            var dbc  = await db.DatabaseConnections.AsNoTracking().ToListAsync();
+            var row  = await db.AppSettings.IgnoreQueryFilters().AsNoTracking()
+                           .FirstOrDefaultAsync(s => s.TenantId == tenantId);
+            // TODO(multi-tenancy): AppApiKeyEntity has no TenantId yet; all keys returned for any tenant.
+            var keys = await db.AppApiKeys.AsNoTracking()
+                           .OrderBy(k => k.SortOrder).Select(k => k.Key).ToListAsync();
+            var mcp  = await db.McpServers.IgnoreQueryFilters().AsNoTracking()
+                           .Where(m => m.TenantId == tenantId).ToListAsync();
+            var sk   = await db.Skills.IgnoreQueryFilters().AsNoTracking()
+                           .Where(s => s.TenantId == tenantId).ToListAsync();
+            var rag  = await db.RagDocuments.IgnoreQueryFilters().AsNoTracking()
+                           .Where(r => r.TenantId == tenantId).ToListAsync();
+            var ff   = await db.FlatFileSources.IgnoreQueryFilters().AsNoTracking()
+                           .Where(f => f.TenantId == tenantId).ToListAsync();
+            var dbc  = await db.DatabaseConnections.IgnoreQueryFilters().AsNoTracking()
+                           .Where(d => d.TenantId == tenantId).ToListAsync();
 
             return new LlmSettingsModel
             {
-                AppName      = row?.AppName  ?? "Pulse",
-                ModelId      = row?.ModelId  ?? "gemini-2.0-flash",
-                LogoFileName = row?.LogoFileName,
-                LogoVersion  = row?.LogoVersion,
-                TerminalSettings = row?.Terminal  ?? new(),
+                AppName          = row?.AppName      ?? "Pulse",
+                ModelId          = row?.ModelId      ?? "gemini-2.0-flash",
+                LogoFileName     = row?.LogoFileName,
+                LogoVersion      = row?.LogoVersion,
+                TerminalSettings = row?.Terminal     ?? new(),
                 AgentMail        = new(), // TODO(multi-tenancy): AgentMail moved to GlobalAgentMailSettings
-                Security         = row?.Security  ?? new(),
-                ApiKeys      = keys,
-                McpServers   = mcp.Select(FromEntity).ToList(),
-                Skills       = sk.Select(FromEntity).ToList(),
-                RagDocuments = rag.Select(FromEntity).ToList(),
-                FlatFileSources = ff.Select(FromEntity).ToList(),
+                Security         = row?.Security     ?? new(),
+                ApiKeys          = keys,
+                McpServers       = mcp.Select(FromEntity).ToList(),
+                Skills           = sk.Select(FromEntity).ToList(),
+                RagDocuments     = rag.Select(FromEntity).ToList(),
+                FlatFileSources  = ff.Select(FromEntity).ToList(),
                 DatabaseConnections = dbc.ToDictionary(
                     e => e.Id,
                     FromEntity,
@@ -284,10 +337,8 @@ public sealed class LlmSettingsService
         }
     }
 
-    // ── Mapping ───────────────────────────────────────────────────────────────
+    // ── Mapping ───────────────────────────────────────────────────────────────────
 
-    // LlmSettingsModel exposes POCO sections as direct fields; we mirror them onto the entity.
-    // (LlmSettingsModel.TerminalSettings / AgentMail / Security become AppSettingsEntity.Terminal / AgentMail / Security.)
     private static void ApplyScalars(AppSettingsEntity row, LlmSettingsModel m)
     {
         row.AppName      = m.AppName;
@@ -296,7 +347,7 @@ public sealed class LlmSettingsService
         row.LogoVersion  = m.LogoVersion;
         row.Terminal     = Clone(m.TerminalSettings ?? new());
         // TODO(multi-tenancy): AgentMail moved to GlobalAgentMailSettings
-        row.Security     = Clone(m.Security         ?? new());
+        row.Security     = Clone(m.Security ?? new());
         row.UpdatedAtUtc = DateTime.UtcNow;
     }
 
@@ -314,10 +365,11 @@ public sealed class LlmSettingsService
         MaxFailedLoginAttempts = s.MaxFailedLoginAttempts, LoginLockoutHours = s.LoginLockoutHours
     };
 
-    private static McpServerEntity ToEntity(McpServerConfig c) => new()
+    private static McpServerEntity ToEntity(McpServerConfig c, Guid tenantId) => new()
     {
         Id = c.Id, Name = c.Name, TransportType = c.TransportType,
-        Url = c.Url, Command = c.Command, Arguments = c.Arguments, IsEnabled = c.IsEnabled
+        Url = c.Url, Command = c.Command, Arguments = c.Arguments,
+        IsEnabled = c.IsEnabled, TenantId = tenantId
     };
     private static void ApplyMcp(McpServerEntity e, McpServerConfig c)
     {
@@ -330,10 +382,10 @@ public sealed class LlmSettingsService
         Url = e.Url, Command = e.Command, Arguments = e.Arguments, IsEnabled = e.IsEnabled
     };
 
-    private static SkillEntity ToEntity(SkillConfig c) => new()
+    private static SkillEntity ToEntity(SkillConfig c, Guid tenantId) => new()
     {
         Id = c.Id, Name = c.Name, Icon = c.Icon, Description = c.Description,
-        Instructions = c.Instructions, IsActive = c.IsActive
+        Instructions = c.Instructions, IsActive = c.IsActive, TenantId = tenantId
     };
     private static void ApplySkill(SkillEntity e, SkillConfig c)
     {
@@ -346,10 +398,11 @@ public sealed class LlmSettingsService
         Instructions = e.Instructions, IsActive = e.IsActive
     };
 
-    private static RagDocumentEntity ToEntity(RagDocument d) => new()
+    private static RagDocumentEntity ToEntity(RagDocument d, Guid tenantId) => new()
     {
         Id = d.Id, Name = d.Name, Description = d.Description, IsEnabled = d.IsEnabled,
-        OriginalFileName = d.OriginalFileName, ChunkCount = d.ChunkCount, UpdatedAt = d.UpdatedAt
+        OriginalFileName = d.OriginalFileName, ChunkCount = d.ChunkCount, UpdatedAt = d.UpdatedAt,
+        TenantId = tenantId
     };
     private static void ApplyRag(RagDocumentEntity e, RagDocument d)
     {
@@ -362,12 +415,13 @@ public sealed class LlmSettingsService
         OriginalFileName = e.OriginalFileName, ChunkCount = e.ChunkCount, UpdatedAt = e.UpdatedAt
     };
 
-    private static FlatFileSourceEntity ToEntity(FlatFileDataSource s) => new()
+    private static FlatFileSourceEntity ToEntity(FlatFileDataSource s, Guid tenantId) => new()
     {
         Id = s.Id, Label = s.Label, Format = s.Format, FilePath = s.FilePath, IsEnabled = s.IsEnabled,
         HasHeaders = s.HasHeaders, Delimiter = s.Delimiter, SheetName = s.SheetName,
         Encoding = s.Encoding, MaxRows = s.MaxRows,
-        FixedWidthColumnsJson = JsonSerializer.Serialize(s.FixedWidthColumns ?? [])
+        FixedWidthColumnsJson = JsonSerializer.Serialize(s.FixedWidthColumns ?? []),
+        TenantId = tenantId
     };
     private static void ApplyFlatFile(FlatFileSourceEntity e, FlatFileDataSource s)
     {
@@ -384,11 +438,12 @@ public sealed class LlmSettingsService
         FixedWidthColumns = DeserializeList(e.FixedWidthColumnsJson)
     };
 
-    private static DatabaseConnectionEntity ToEntity(string id, DatabaseConnectionEntry d) => new()
+    private static DatabaseConnectionEntity ToEntity(string id, DatabaseConnectionEntry d, Guid tenantId) => new()
     {
         Id = id, Label = d.Label, Provider = d.Provider, ConnectionString = d.ConnectionString,
         IsEnabled = d.IsEnabled, ReadOnly = d.ReadOnly, MaxRows = d.MaxRows,
-        AllowedSchemasJson = JsonSerializer.Serialize(d.AllowedSchemas ?? [])
+        AllowedSchemasJson = JsonSerializer.Serialize(d.AllowedSchemas ?? []),
+        TenantId = tenantId
     };
     private static void ApplyDbConn(DatabaseConnectionEntity e, DatabaseConnectionEntry d)
     {

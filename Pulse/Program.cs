@@ -70,8 +70,9 @@ builder.Services.AddHttpClient("GeminiEmbed")
 	.ConfigureHttpClient(c => c.Timeout = TimeSpan.FromMinutes(2));
 builder.Services.AddHttpClient("MemoryExtract")
 	.ConfigureHttpClient(c => c.Timeout = TimeSpan.FromMinutes(2));
+builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<LlmSettingsService>();
-builder.Services.AddSingleton<LlmSettingsSeeder>();
+builder.Services.AddSingleton<GlobalAgentMailSettingsService>();
 builder.Services.AddSingleton<GeminiKeyRotationService>();
 builder.Services.AddSingleton<ChatHistoryService>();
 builder.Services.AddSingleton<GeminiEmbeddingService>();
@@ -144,14 +145,6 @@ using (var startupScope = app.Services.CreateScope())
 		.GetRequiredService<IDbContextFactory<Pulse.Data.ApplicationDbContext>>();
 	await using var ctx = await db.CreateDbContextAsync();
 	await ctx.Database.MigrateAsync();
-
-	// ── Migrate llm-settings.json → DB (one-time) ─────────────────────────────
-	await startupScope.ServiceProvider
-		.GetRequiredService<LlmSettingsSeeder>()
-		.SeedAsync();
-	await startupScope.ServiceProvider
-		.GetRequiredService<LlmSettingsService>()
-		.ReloadAsync();
 
 	// ── Seed roles + default admin user ───────────────────────────────────────
 	var roleManager = startupScope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
