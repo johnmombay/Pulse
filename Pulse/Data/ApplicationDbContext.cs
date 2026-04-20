@@ -1,13 +1,23 @@
 using Pulse.Data.Entities;
+using Pulse.Infrastructure;
 using Pulse.Models;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace Pulse.Data
 {
-	public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
-		: IdentityDbContext<ApplicationUser>(options)
+	public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
 	{
+		private readonly ITenantContext? _tenantContext;
+
+		public ApplicationDbContext(
+			DbContextOptions<ApplicationDbContext> options,
+			ITenantContext? tenantContext = null)
+			: base(options)
+		{
+			_tenantContext = tenantContext;
+		}
+
 		public DbSet<AgentMemory>          AgentMemories        => Set<AgentMemory>();
 		public DbSet<ChatMessageEntity>    ChatMessages         => Set<ChatMessageEntity>();
 		public DbSet<ScheduledTask>        ScheduledTasks       => Set<ScheduledTask>();
@@ -207,6 +217,85 @@ namespace Pulse.Data
 				e.Property(s => s.FromAddress).HasMaxLength(200);
 				e.Property(s => s.FromName).HasMaxLength(200);
 			});
+
+			// ── Multi-tenancy global query filters ───────────────────────────────────────
+			// Filter is bypassed for SuperAdmin (TenantId == null) so they can see all tenants.
+			// Background jobs set _tenantContext via SetTenantId() before querying.
+			builder.Entity<AppSettingsEntity>()
+				.HasQueryFilter(e => _tenantContext == null
+								   || _tenantContext.TenantId == null
+								   || e.TenantId == _tenantContext.TenantId);
+
+			builder.Entity<McpServerEntity>()
+				.HasQueryFilter(e => _tenantContext == null
+								   || _tenantContext.TenantId == null
+								   || e.TenantId == _tenantContext.TenantId);
+
+			builder.Entity<SkillEntity>()
+				.HasQueryFilter(e => _tenantContext == null
+								   || _tenantContext.TenantId == null
+								   || e.TenantId == _tenantContext.TenantId);
+
+			builder.Entity<RagDocumentEntity>()
+				.HasQueryFilter(e => _tenantContext == null
+								   || _tenantContext.TenantId == null
+								   || e.TenantId == _tenantContext.TenantId);
+
+			builder.Entity<FlatFileSourceEntity>()
+				.HasQueryFilter(e => _tenantContext == null
+								   || _tenantContext.TenantId == null
+								   || e.TenantId == _tenantContext.TenantId);
+
+			builder.Entity<DatabaseConnectionEntity>()
+				.HasQueryFilter(e => _tenantContext == null
+								   || _tenantContext.TenantId == null
+								   || e.TenantId == _tenantContext.TenantId);
+
+			builder.Entity<AgentMemory>()
+				.HasQueryFilter(e => _tenantContext == null
+								   || _tenantContext.TenantId == null
+								   || e.TenantId == _tenantContext.TenantId);
+
+			builder.Entity<ChatMessageEntity>()
+				.HasQueryFilter(e => _tenantContext == null
+								   || _tenantContext.TenantId == null
+								   || e.TenantId == _tenantContext.TenantId);
+
+			builder.Entity<ScheduledTask>()
+				.HasQueryFilter(e => _tenantContext == null
+								   || _tenantContext.TenantId == null
+								   || e.TenantId == _tenantContext.TenantId);
+
+			builder.Entity<ScheduledTaskResult>()
+				.HasQueryFilter(e => _tenantContext == null
+								   || _tenantContext.TenantId == null
+								   || e.TenantId == _tenantContext.TenantId);
+
+			builder.Entity<WorkflowDefinition>()
+				.HasQueryFilter(e => _tenantContext == null
+								   || _tenantContext.TenantId == null
+								   || e.TenantId == _tenantContext.TenantId);
+
+			builder.Entity<WorkflowRun>()
+				.HasQueryFilter(e => _tenantContext == null
+								   || _tenantContext.TenantId == null
+								   || e.TenantId == _tenantContext.TenantId);
+		}
+
+		public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+		{
+			var tenantId = _tenantContext?.TenantId;
+
+			if (tenantId.HasValue)
+			{
+				foreach (var entry in ChangeTracker.Entries<ITenantOwned>()
+					.Where(e => e.State == EntityState.Added && e.Entity.TenantId == Guid.Empty))
+				{
+					entry.Entity.TenantId = tenantId.Value;
+				}
+			}
+
+			return base.SaveChangesAsync(cancellationToken);
 		}
 	}
 }
