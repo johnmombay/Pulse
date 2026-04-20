@@ -1,3 +1,4 @@
+using Pulse.Infrastructure;
 using Pulse.Models;
 using Pulse.Services;
 using Hangfire;
@@ -9,20 +10,22 @@ namespace Pulse.Jobs;
 /// Creates its own DI scope so it can resolve scoped/transient services safely.
 /// </summary>
 public sealed class ScheduledTaskJob(
+    ITenantContext tenantContext,
     IServiceScopeFactory scopeFactory,
     ILogger<ScheduledTaskJob> logger)
 {
     [AutomaticRetry(Attempts = 0)]
-    public async Task RunAsync(int taskId, IJobCancellationToken jobCt)
+    public async Task RunAsync(Guid tenantId, int taskId, IJobCancellationToken jobCt)
     {
+        tenantContext.SetTenantId(tenantId);
         logger.LogInformation("ScheduledTaskJob starting for task {TaskId}", taskId);
 
         await using var scope    = scopeFactory.CreateAsyncScope();
         var sp                   = scope.ServiceProvider;
         var schedulerService     = sp.GetRequiredService<SchedulerService>();
         var agentRunner          = sp.GetRequiredService<ScheduledAgentRunner>();
-        var agentMailService     = sp.GetRequiredService<AgentMailService>();
-        var llmSettings          = sp.GetRequiredService<LlmSettingsService>();
+        var agentMailService          = sp.GetRequiredService<AgentMailService>();
+        var globalAgentMailSettings   = sp.GetRequiredService<GlobalAgentMailSettingsService>();
 
         var task = await schedulerService.GetByIdAsync(taskId, jobCt.ShutdownToken);
         if (task is null)
@@ -85,9 +88,9 @@ public sealed class ScheduledTaskJob(
 
         if (task.DeliveryType is DeliveryType.Email or DeliveryType.Both)
         {
-            var am = llmSettings.Get().AgentMail;
-            if (am.IsEnabled &&
-                !string.IsNullOrWhiteSpace(am.ApiKey) &&
+            var globalMail = await globalAgentMailSettings.GetAsync();
+            if (globalMail.IsEnabled &&
+                !string.IsNullOrWhiteSpace(globalMail.ApiKey) &&
                 !string.IsNullOrWhiteSpace(task.DeliveryEmail))
             {
                 try
@@ -95,7 +98,7 @@ public sealed class ScheduledTaskJob(
                     var subject = $"[Pulse] {task.Title} — " +
                                   (success ? "✅ Completed" : "❌ Error");
                     await agentMailService.SendEmailAsync(
-                        am.DefaultInbox,
+                        globalMail.FromAddress,
                         [task.DeliveryEmail],
                         subject,
                         result,

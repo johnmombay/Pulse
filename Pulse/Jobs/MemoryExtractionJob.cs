@@ -1,3 +1,4 @@
+using Pulse.Infrastructure;
 using Pulse.Services;
 using Hangfire;
 
@@ -10,16 +11,19 @@ namespace Pulse.Jobs;
 /// bubble up to the user.
 /// </summary>
 public sealed class MemoryExtractionJob(
+    ITenantContext tenantContext,
     IServiceScopeFactory scopeFactory,
     ILogger<MemoryExtractionJob> logger)
 {
     [AutomaticRetry(Attempts = 1)]
     public async Task ExtractAsync(
+        Guid tenantId,
         string userId,
         string userMessage,
         string assistantResponse,
         IJobCancellationToken jobCt)
     {
+        tenantContext.SetTenantId(tenantId);
         if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(assistantResponse))
             return;
 

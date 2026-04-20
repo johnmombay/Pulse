@@ -1,3 +1,4 @@
+using Pulse.Infrastructure;
 using Pulse.Jobs;
 using Pulse.Models;
 using Pulse.Services;
@@ -14,6 +15,7 @@ namespace Pulse.Pages;
 public class WorkflowsModel(
     WorkflowService workflowService,
     IBackgroundJobClient backgroundJobs,
+    ITenantContext tenantContext,
     ILogger<WorkflowsModel> logger) : PageModel
 {
     public IReadOnlyList<WorkflowDefinition> Workflows  { get; private set; } = [];
@@ -111,7 +113,7 @@ public class WorkflowsModel(
         var def = await workflowService.GetAsync(id, UserId);
         if (def is null) return new JsonResult(new { success = false, error = "Workflow not found." });
 
-        backgroundJobs.Enqueue<WorkflowJob>(j => j.RunAsync(def.Id, UserId, JobCancellationToken.Null));
+        backgroundJobs.Enqueue<WorkflowJob>(j => j.RunAsync(tenantContext.TenantId ?? Guid.Empty, def.Id, UserId, JobCancellationToken.Null));
 
         return new JsonResult(new { success = true, message = $"Workflow \"{def.Title}\" queued — {def.Steps.Count} step(s) will run in sequence." });
     }

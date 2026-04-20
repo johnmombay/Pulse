@@ -115,7 +115,7 @@ public class SchedulerModel(
             return new JsonResult(new { success = false, error = "Task not found." });
 
         BackgroundJob.Enqueue<ScheduledTaskJob>(j =>
-            j.RunAsync(task.Id, JobCancellationToken.Null));
+            j.RunAsync(task.TenantId, task.Id, JobCancellationToken.Null));
 
         return new JsonResult(new
         {

@@ -1,3 +1,4 @@
+using Pulse.Infrastructure;
 using Pulse.Services;
 using Hangfire;
 
@@ -8,16 +9,19 @@ namespace Pulse.Jobs;
 /// <see cref="MemoryExtractionJob"/> to persist memorable facts from the exchange.
 /// </summary>
 public sealed class AgentTaskJob(
+    ITenantContext tenantContext,
     AgentOrchestrationService orchestration,
     ILogger<AgentTaskJob> logger)
 {
     [AutomaticRetry(Attempts = 0)]
     public async Task ExecuteAsync(
+        Guid tenantId,
         string sessionId,
         string userMessage,
         string userId,
         IJobCancellationToken jobCancellationToken)
     {
+        tenantContext.SetTenantId(tenantId);
         logger.LogInformation("AgentTaskJob starting for session {SessionId}", sessionId);
 
         var response = await orchestration.ExecuteAsync(
@@ -27,7 +31,7 @@ public sealed class AgentTaskJob(
         if (!string.IsNullOrWhiteSpace(userId) && !string.IsNullOrWhiteSpace(response))
         {
             BackgroundJob.Enqueue<MemoryExtractionJob>(j =>
-                j.ExtractAsync(userId, userMessage, response, JobCancellationToken.Null));
+                j.ExtractAsync(tenantId, userId, userMessage, response, JobCancellationToken.Null));
         }
     }
 }

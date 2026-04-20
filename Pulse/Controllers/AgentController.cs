@@ -1,3 +1,4 @@
+using Pulse.Infrastructure;
 using Pulse.Jobs;
 using Pulse.Services;
 using Hangfire;
@@ -10,7 +11,8 @@ namespace Pulse.Controllers;
 [Authorize]
 public class AgentController(
     ChatHistoryService chatHistoryService,
-    FileExtractionService fileExtractionService) : Controller
+    FileExtractionService fileExtractionService,
+    ITenantContext tenantContext) : Controller
 {
     private string CurrentUserId =>
         User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
@@ -55,7 +57,7 @@ public class AgentController(
         var userId = CurrentUserId;
 
         BackgroundJob.Enqueue<AgentTaskJob>(j =>
-            j.ExecuteAsync(sessionId, request.Message, userId, JobCancellationToken.Null));
+            j.ExecuteAsync(tenantContext.TenantId ?? Guid.Empty, sessionId, request.Message, userId, JobCancellationToken.Null));
 
         return Ok(new { sessionId });
     }

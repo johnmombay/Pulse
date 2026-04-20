@@ -219,14 +219,14 @@ public sealed class SchedulerService(
             if (delay < TimeSpan.Zero) delay = TimeSpan.FromSeconds(5);
 
             backgroundJobs.Schedule<ScheduledTaskJob>(
-                j => j.RunAsync(task.Id, JobCancellationToken.Null),
+                j => j.RunAsync(task.TenantId, task.Id, JobCancellationToken.Null),
                 delay);
         }
         else
         {
             recurringJobs.AddOrUpdate<ScheduledTaskJob>(
                 HangfireJobId(task.Id),
-                j => j.RunAsync(task.Id, JobCancellationToken.Null),
+                j => j.RunAsync(task.TenantId, task.Id, JobCancellationToken.Null),
                 BuildCron(task),
                 new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
         }
