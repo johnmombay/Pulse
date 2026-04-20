@@ -474,6 +474,12 @@ public class SettingsModel(
         if (string.IsNullOrWhiteSpace(FlatFile?.Label))
             return new JsonResult(new { success = false, error = "Label is required." });
 
+        // Multi-tenancy: uploads must belong to a tenant. Block SuperAdmin /
+        // unauthenticated callers from writing into a shared/global folder.
+        if (TenantId == Guid.Empty)
+            return new JsonResult(new { success = false, error = "A tenant context is required to upload data sources." })
+                { StatusCode = 400 };
+
         try
         {
             var isNew = string.IsNullOrWhiteSpace(FlatFile.Id);
@@ -488,8 +494,12 @@ public class SettingsModel(
 
             if (FlatFileUpload is { Length: > 0 })
             {
-                // Save uploaded file to {ContentRoot}/DataSources/
-                var dir = Path.Combine(env.ContentRootPath, "DataSources");
+                // Save uploaded file to {ContentRoot}/DataSources/{TenantId}/
+                // so each tenant's files are isolated on disk.
+                var dir = Path.Combine(
+                    env.ContentRootPath,
+                    "DataSources",
+                    TenantId.ToString("N"));
                 Directory.CreateDirectory(dir);
 
                 var ext      = Path.GetExtension(FlatFileUpload.FileName);
@@ -497,6 +507,7 @@ public class SettingsModel(
                 filePath     = Path.Combine(dir, safeFile);
 
                 // Remove any previous file for this ID with a different extension
+                // (scoped to this tenant's folder only).
                 foreach (var old in Directory.GetFiles(dir, id + ".*"))
                     if (!old.Equals(filePath, StringComparison.OrdinalIgnoreCase))
                         System.IO.File.Delete(old);
@@ -552,7 +563,38 @@ public class SettingsModel(
     // ── Flat-file data sources: delete ────────────────────────────────────────
     public async Task<IActionResult> OnPostDeleteFlatFileAsync(string id)
     {
+        // Look up the source first so we can also remove its file from disk.
+        var existing = (await settingsService.GetAsync(TenantId)).FlatFileSources
+            .FirstOrDefault(s => s.Id == id);
+
         await settingsService.DeleteFlatFileSourceAsync(TenantId, id);
+
+        // Best-effort delete of the on-disk file, scoped to this tenant's folder.
+        if (existing is { FilePath: { Length: > 0 } storedPath })
+        {
+            try
+            {
+                var tenantDir = Path.GetFullPath(Path.Combine(
+                    env.ContentRootPath,
+                    "DataSources",
+                    TenantId.ToString("N")));
+
+                var fullPath = Path.GetFullPath(storedPath);
+
+                // Only delete if the file actually lives inside this tenant's folder.
+                if (fullPath.StartsWith(tenantDir + Path.DirectorySeparatorChar,
+                                        StringComparison.OrdinalIgnoreCase)
+                    && System.IO.File.Exists(fullPath))
+                {
+                    System.IO.File.Delete(fullPath);
+                }
+            }
+            catch
+            {
+                // Ignore filesystem errors — DB row is already gone.
+            }
+        }
+
         TempData["FlatFileSuccess"] = "Data source removed.";
         return RedirectToPage();
     }
