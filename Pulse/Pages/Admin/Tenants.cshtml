@@ -1,0 +1,61 @@
+@page
+@model Pulse.Pages.Admin.TenantsModel
+@{
+    ViewData["Title"] = "Tenant Management";
+}
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <p class="text-muted small mb-0">@Model.Tenants.Count tenant(s) total</p>
+    </div>
+</div>
+
+<div class="bp-card overflow-hidden">
+    <table class="table table-hover align-middle mb-0">
+        <thead>
+            <tr>
+                <th class="ps-4" style="width:25%">Name</th>
+                <th style="width:20%">Slug</th>
+                <th style="width:10%">Users</th>
+                <th style="width:15%">Created</th>
+                <th style="width:15%">Status</th>
+                <th class="text-end pe-4" style="width:15%">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!Model.Tenants.Any())
+            {
+                <tr>
+                    <td colspan="6" class="text-center text-muted py-5">No tenants found.</td>
+                </tr>
+            }
+            @foreach (var row in Model.Tenants)
+            {
+                <tr>
+                    <td class="ps-4 fw-medium">@row.Name</td>
+                    <td class="text-muted">@row.Slug</td>
+                    <td>@row.UserCount</td>
+                    <td class="text-muted">@row.CreatedUtc</td>
+                    <td>
+                        @if (row.IsActive)
+                        {
+                            <span class="badge bg-success">Active</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">Inactive</span>
+                        }
+                    </td>
+                    <td class="text-end pe-4">
+                        <form method="post" asp-page-handler="Toggle" asp-route-id="@row.Id">
+                            <button class="btn btn-sm btn-outline-secondary" type="submit"
+                                    title="@(row.IsActive ? "Deactivate tenant" : "Activate tenant")">
+                                @(row.IsActive ? "Deactivate" : "Activate")
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
