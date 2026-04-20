@@ -282,6 +282,22 @@ namespace Pulse.Data
 								   || e.TenantId == _tenantContext.TenantId);
 		}
 
+		public override int SaveChanges()
+		{
+			var tenantId = _tenantContext?.TenantId;
+
+			if (tenantId.HasValue)
+			{
+				foreach (var entry in ChangeTracker.Entries<ITenantOwned>()
+					.Where(e => e.State == EntityState.Added && e.Entity.TenantId == Guid.Empty))
+				{
+					entry.Entity.TenantId = tenantId.Value;
+				}
+			}
+
+			return base.SaveChanges();
+		}
+
 		public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
 		{
 			var tenantId = _tenantContext?.TenantId;
