@@ -27,7 +27,7 @@ public class ApplicationUserClaimsPrincipalFactory
 
         if (user.TenantId.HasValue)
         {
-            identity.AddClaim(new Claim("tid", user.TenantId.Value.ToString()));
+            identity.AddClaim(new Claim("tid", user.TenantId.Value.ToString("D")));
         }
 
         return identity;

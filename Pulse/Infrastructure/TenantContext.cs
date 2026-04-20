@@ -25,8 +25,7 @@ public interface ITenantContext
 public class TenantContext : ITenantContext
 {
     private readonly IHttpContextAccessor _httpContextAccessor;
-    private Guid? _overrideTenantId;
-    private bool _overrideSet;
+    private (bool Set, Guid? Value) _override;
 
     public TenantContext(IHttpContextAccessor httpContextAccessor)
     {
@@ -37,8 +36,7 @@ public class TenantContext : ITenantContext
     {
         get
         {
-            // Background job override takes precedence
-            if (_overrideSet) return _overrideTenantId;
+            if (_override.Set) return _override.Value;
 
             var claim = _httpContextAccessor.HttpContext?
                 .User.FindFirstValue("tid");
@@ -52,8 +50,5 @@ public class TenantContext : ITenantContext
             .User.IsInRole("SuperAdmin") ?? false;
 
     public void SetTenantId(Guid? tenantId)
-    {
-        _overrideTenantId = tenantId;
-        _overrideSet = true;
-    }
+        => _override = (true, tenantId);
 }
