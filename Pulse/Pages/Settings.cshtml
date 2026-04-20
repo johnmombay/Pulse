@@ -242,8 +242,8 @@
     @if (isSuperAdmin)
     {
         <li class="nav-item"><button type="button" class="nav-link" data-tab="agentmail">✉️ AgentMail</button></li>
+        <li class="nav-item"><button type="button" class="nav-link" data-tab="security">🔒 Security</button></li>
     }
-    <li class="nav-item"><button type="button" class="nav-link" data-tab="security">🔒 Security</button></li>
 </ul>
 
 @* ═══════════════════════════════════════════════════════════════════════════
@@ -1841,8 +1841,10 @@
 }
 
 @* ═══════════════════════════════════════════════════════════════════════════
-   SECURITY
+   SECURITY (SuperAdmin only — global authentication policy)
 ═══════════════════════════════════════════════════════════════════════════ *@
+@if (isSuperAdmin)
+{
 <div id="tab-pane-security" class="settings-tab-pane pt-4">
 @{
     var securitySuccess = TempData["SecuritySuccess"] as string;
@@ -1893,6 +1895,7 @@
     </div>
 </div>
 </div><!-- /tab-pane-security -->
+}
 
 @section Scripts {
 <script>

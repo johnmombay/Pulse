@@ -912,6 +912,10 @@ public class SettingsModel(
     // ── Security ────────────────────────────────────────────────────────────
     public async Task<IActionResult> OnPostSaveSecurityAsync()
     {
+        // Security policy is global authentication infrastructure — only SuperAdmin may modify it.
+        if (!User.IsInRole("SuperAdmin"))
+            return Forbid();
+
         var model = new Pulse.Models.SecuritySettings
         {
             MaxFailedLoginAttempts = Math.Clamp(Security.MaxFailedLoginAttempts, 1, 20),
