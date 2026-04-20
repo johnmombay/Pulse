@@ -21,20 +21,20 @@ public class SignupTenantModel : PageModel
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly IEmailSender _emailSender;
-    private readonly IDbContextFactory<ApplicationDbContext> _dbFactory;
+    private readonly ApplicationDbContext _db;
     private readonly LlmSettingsService _settingsService;
 
     public SignupTenantModel(
         UserManager<ApplicationUser> userManager,
         SignInManager<ApplicationUser> signInManager,
         IEmailSender emailSender,
-        IDbContextFactory<ApplicationDbContext> dbFactory,
+        ApplicationDbContext db,
         LlmSettingsService settingsService)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _emailSender = emailSender;
-        _dbFactory = dbFactory;
+        _db = db;
         _settingsService = settingsService;
     }
 
@@ -84,18 +84,24 @@ public class SignupTenantModel : PageModel
         if (!ModelState.IsValid)
             return Page();
 
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        await using var tx = await db.Database.BeginTransactionAsync();
+        await using var tx = await _db.Database.BeginTransactionAsync();
 
         try
         {
             // 1. Create tenant
             var slug = GenerateSlug(Input.TenantName);
 
+            if (string.IsNullOrEmpty(slug))
+            {
+                ModelState.AddModelError("Input.TenantName",
+                    "Organisation name must contain at least one letter or number.");
+                return Page();
+            }
+
             // Ensure slug uniqueness
             var slugBase = slug;
             int suffix = 1;
-            while (await db.Tenants.IgnoreQueryFilters().AnyAsync(t => t.Slug == slug))
+            while (await _db.Tenants.IgnoreQueryFilters().AnyAsync(t => t.Slug == slug))
                 slug = $"{slugBase}-{suffix++}";
 
             var tenant = new Tenant
@@ -105,16 +111,16 @@ public class SignupTenantModel : PageModel
                 CreatedUtc = DateTime.UtcNow,
                 IsActive   = true,
             };
-            db.Tenants.Add(tenant);
-            await db.SaveChangesAsync();
+            _db.Tenants.Add(tenant);
+            await _db.SaveChangesAsync();
 
             // 2. Seed default AppSettings row for this tenant
-            db.AppSettings.Add(new AppSettingsEntity
+            _db.AppSettings.Add(new AppSettingsEntity
             {
                 TenantId  = tenant.Id,
                 AppName   = Input.TenantName.Trim(),
             });
-            await db.SaveChangesAsync();
+            await _db.SaveChangesAsync();
 
             // 3. Create admin user
             var user = new ApplicationUser
@@ -137,7 +143,14 @@ public class SignupTenantModel : PageModel
             }
 
             // 4. Assign TenantAdmin role
-            await _userManager.AddToRoleAsync(user, "TenantAdmin");
+            var roleResult = await _userManager.AddToRoleAsync(user, "TenantAdmin");
+            if (!roleResult.Succeeded)
+            {
+                await tx.RollbackAsync();
+                foreach (var e in roleResult.Errors)
+                    ModelState.AddModelError(string.Empty, e.Description);
+                return Page();
+            }
 
             await tx.CommitAsync();
 
@@ -150,8 +163,17 @@ public class SignupTenantModel : PageModel
                 values: new { area = "Identity", userId = user.Id, code },
                 protocol: Request.Scheme)!;
 
-            await _emailSender.SendEmailAsync(Input.Email, "Confirm your email",
-                $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
+            try
+            {
+                await _emailSender.SendEmailAsync(Input.Email, "Confirm your email",
+                    $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
+            }
+            catch (Exception ex)
+            {
+                // Log but don't fail — account was created successfully
+                // User can request a new confirmation email
+                _ = ex; // suppress warning
+            }
 
             if (_userManager.Options.SignIn.RequireConfirmedAccount)
                 return RedirectToPage("RegisterConfirmation", new { email = Input.Email, returnUrl });

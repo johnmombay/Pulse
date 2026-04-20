@@ -110,7 +110,7 @@ namespace Pulse.Areas.Identity.Pages.Account
             return RedirectToPage("SignupTenant", new { returnUrl });
         }
 
-        public IActionResult OnPostAsync(string returnUrl = null)
+        public IActionResult OnPost(string returnUrl = null)
         {
             return RedirectToPage("SignupTenant", new { returnUrl });
         }
