@@ -94,6 +94,7 @@ builder.Services.AddHttpClient("MemoryExtract")
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<LlmSettingsService>();
 builder.Services.AddSingleton<GlobalAgentMailSettingsService>();
+builder.Services.AddSingleton<GlobalLlmSettingsService>();
 builder.Services.AddSingleton<GeminiKeyRotationService>();
 builder.Services.AddSingleton<ChatHistoryService>();
 builder.Services.AddSingleton<GeminiEmbeddingService>();

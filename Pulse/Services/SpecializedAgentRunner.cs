@@ -33,6 +33,7 @@ public sealed class SpecializedAgentRunner(
     TerminalPlugin terminalPlugin,
     AgentMailPlugin agentMailPlugin,
     FlatFileDataPlugin flatFileDataPlugin,
+    ChatHistoryService chatHistory,
     IHubContext<AgentHub> hubContext,
     ILogger<SpecializedAgentRunner> logger)
 {
@@ -161,13 +162,12 @@ public sealed class SpecializedAgentRunner(
             // ── Chart (uses parent sessionId so charts appear in the right chat) ─
             if (allowedKeys.Contains(AgentDefinition.PluginKeys.Chart))
             {
-                // ChartGeneratorPlugin is instantiated per-call with the live sessionId and hub.
-                // ChatHistoryService is not injected into the runner; pass null-safe stub via parentSessionId.
-                // A no-op ChatHistoryService reference is not needed — ChartGeneratorPlugin only uses
-                // hubContext.Clients.Group(sessionId).SendAsync for rendering, which works fine here.
+                // Pass the real ChatHistoryService so the chart spec is persisted under
+                // the parent session and replays on page reload — same behaviour as the
+                // orchestrator path in AgentOrchestrationService.LoadAllPluginsAsync.
                 var chartPlugin = new ChartGeneratorPlugin(
                     parentSessionId, userId, hubContext,
-                    null!, // sub-agents don't maintain their own display history
+                    chatHistory,
                     logger);
                 kernel.Plugins.AddFromObject(chartPlugin, "ChartGenerator");
             }

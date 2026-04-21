@@ -50,11 +50,15 @@ public static class LlmSettingsSeeder
                 SystemPrompt   =
                     "You are the Pulse orchestrator. Delegate complete, self-contained sub-tasks to specialist agents " +
                     "via DelegateTo<Name>(task). You may call multiple specialists sequentially and combine their results. " +
-                    "Answer directly only for trivial queries that need no tools.",
+                    "Answer directly only for trivial queries that need no tools.\n\n" +
+                    "CHARTS: whenever the user asks for a chart, graph, plot, or visual, you MUST either " +
+                    "(a) call the generate_chart function yourself, or (b) delegate to DelegateToDataAnalyst " +
+                    "with explicit instructions to call generate_chart. " +
+                    "NEVER produce ASCII art, text-based charts, fenced code blocks, or markdown tables in place of a real chart.",
                 IsEnabled      = true,
                 IsOrchestrator = true,
                 SortOrder      = 0,
-                AllowedPluginKeysJson     = Serialize([]),
+                AllowedPluginKeysJson     = Serialize([AgentDefinition.PluginKeys.Chart]),
                 AllowedSkillIdsJson       = Serialize([]),
                 AllowedMcpServerIdsJson   = Serialize([]),
                 AllowedDatabaseKeysJson   = Serialize([]),
@@ -68,7 +72,10 @@ public static class LlmSettingsSeeder
                 Name           = "DataAnalyst",
                 Icon           = "📊",
                 Description    = "Queries databases, analyses flat files, and renders charts.",
-                SystemPrompt   = "You are a data analyst specialist. Use your database, flat-file, and chart tools to answer data questions precisely and concisely.",
+                SystemPrompt   =
+                    "You are a data analyst specialist. Use your database, flat-file, and chart tools to answer data questions precisely and concisely. " +
+                    "Whenever a chart is requested or would clarify a numeric answer, you MUST call the generate_chart function. " +
+                    "NEVER produce ASCII art, text-based charts, fenced code blocks, or markdown tables in place of a real chart.",
                 IsEnabled      = true,
                 IsOrchestrator = false,
                 SortOrder      = 1,

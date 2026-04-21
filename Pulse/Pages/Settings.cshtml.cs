@@ -18,7 +18,8 @@ public class SettingsModel(
     IDatabaseTools databaseTools,
     IWebHostEnvironment env,
     ITenantContext tenantContext,
-    GlobalAgentMailSettingsService globalAgentMail) : PageModel
+    GlobalAgentMailSettingsService globalAgentMail,
+    GlobalLlmSettingsService globalLlm) : PageModel
 {
     // TODO(multi-tenancy): Admin settings pages should validate the user belongs to this tenant.
     private Guid TenantId => tenantContext.TenantId ?? Guid.Empty;
@@ -187,12 +188,21 @@ public class SettingsModel(
             .Where(k => k.Length > 0)
             .ToList();
 
+        // ModelId + ApiVersion are stored globally and shared by every tenant.
+        await globalLlm.SaveAsync(new Data.Entities.GlobalLlmSettings
+        {
+            ModelId    = Input.ModelId.Trim(),
+            ApiVersion = string.IsNullOrWhiteSpace(Input.ApiVersion) ? "V1Beta" : Input.ApiVersion.Trim(),
+        });
+
         var current = await settingsService.GetAsync(TenantId);
         await settingsService.SaveAsync(TenantId, new LlmSettingsModel
         {
             AppName             = current.AppName ?? "Pulse",
-            ModelId             = Input.ModelId.Trim(),
-            ApiVersion          = string.IsNullOrWhiteSpace(Input.ApiVersion) ? "V1Beta" : Input.ApiVersion.Trim(),
+            // ModelId / ApiVersion intentionally left blank — LlmSettingsService.GetAsync
+            // shadows them with the global values managed by SuperAdmin.
+            ModelId             = string.Empty,
+            ApiVersion          = "V1Beta",
             ApiKeys             = cleanKeys,
             McpServers          = current.McpServers          ?? [],
             Skills              = current.Skills              ?? [],

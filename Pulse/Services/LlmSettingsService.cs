@@ -17,6 +17,7 @@ public sealed class LlmSettingsService
 {
     private readonly IDbContextFactory<ApplicationDbContext> _dbFactory;
     private readonly IMemoryCache _cache;
+    private readonly GlobalLlmSettingsService _globalLlm;
 
     private static string CacheKey(Guid tenantId) => $"LlmSettings_{tenantId:N}";
 
@@ -25,10 +26,12 @@ public sealed class LlmSettingsService
 
     public LlmSettingsService(
         IDbContextFactory<ApplicationDbContext> dbFactory,
-        IMemoryCache cache)
+        IMemoryCache cache,
+        GlobalLlmSettingsService globalLlm)
     {
         _dbFactory = dbFactory;
         _cache     = cache;
+        _globalLlm = globalLlm;
     }
 
     // ── Read ────────────────────────────────────────────────────────────────────
@@ -36,16 +39,29 @@ public sealed class LlmSettingsService
     /// <summary>
     /// Returns the cached <see cref="LlmSettingsModel"/> for the given tenant.
     /// Loads from DB on first call; subsequent calls return the cached copy.
+    /// <see cref="LlmSettingsModel.ModelId"/> and <see cref="LlmSettingsModel.ApiVersion"/>
+    /// are always overwritten with the global values managed by SuperAdmin, so every
+    /// tenant uses the same model regardless of any stale per-tenant value on disk.
     /// </summary>
     public async Task<LlmSettingsModel> GetAsync(Guid tenantId)
     {
         var key = CacheKey(tenantId);
+        LlmSettingsModel model;
         if (_cache.TryGetValue(key, out LlmSettingsModel? cached) && cached != null)
-            return cached;
+        {
+            model = cached;
+        }
+        else
+        {
+            model = await LoadFromDbAsync(tenantId);
+            _cache.Set(key, model, CacheOptions);
+        }
 
-        var loaded = await LoadFromDbAsync(tenantId);
-        _cache.Set(key, loaded, CacheOptions);
-        return loaded;
+        // Global model + API version shadow any per-tenant row value.
+        var global = await _globalLlm.GetAsync();
+        model.ModelId    = global.ModelId ?? string.Empty;
+        model.ApiVersion = string.IsNullOrWhiteSpace(global.ApiVersion) ? "V1Beta" : global.ApiVersion;
+        return model;
     }
 
     /// <summary>

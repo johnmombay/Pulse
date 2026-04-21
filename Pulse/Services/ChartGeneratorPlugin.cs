@@ -24,8 +24,11 @@ public sealed class ChartGeneratorPlugin(
 
     [KernelFunction("generate_chart")]
     [Description(
-        "Renders an interactive chart directly inside the chat window. " +
-        "Use whenever the user asks for a chart, graph, or visual representation of data. " +
+        "Renders an interactive Chart.js chart directly inside the chat window. " +
+        "YOU MUST CALL THIS FUNCTION whenever the user asks for a chart, graph, plot, " +
+        "or any visual representation of data. " +
+        "NEVER respond with ASCII art, text-based charts, fenced code blocks, markdown tables, " +
+        "or descriptions of a chart in place of calling this function — those are not charts. " +
         "Supported types: bar, line, pie, doughnut, radar, scatter. " +
         "Multiple datasets produce grouped or multi-series charts. " +
         "For area charts use type='line' and set fill=true on the dataset.")]

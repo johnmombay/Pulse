@@ -40,6 +40,7 @@ namespace Pulse.Data
 		// ── Multi-tenancy ─────────────────────────────────────────────────────────
 		public DbSet<Tenant>                   Tenants              => Set<Tenant>();
 		public DbSet<GlobalAgentMailSettings>  GlobalAgentMailSettings => Set<GlobalAgentMailSettings>();
+		public DbSet<GlobalLlmSettings>        GlobalLlmSettings    => Set<GlobalLlmSettings>();
 
 		protected override void OnModelCreating(ModelBuilder builder)
 		{
@@ -243,6 +244,14 @@ namespace Pulse.Data
 				e.Property(s => s.FromAddress).HasMaxLength(200);
 				e.Property(s => s.FromName).HasMaxLength(200);
 				e.Property(s => s.DefaultInbox).HasMaxLength(200);
+			});
+
+			builder.Entity<GlobalLlmSettings>(e =>
+			{
+				e.Property(s => s.Id).ValueGeneratedNever();
+				e.ToTable(t => t.HasCheckConstraint("CK_GlobalLlmSettings_Singleton", "[Id] = 1"));
+				e.Property(s => s.ModelId).HasMaxLength(200);
+				e.Property(s => s.ApiVersion).HasMaxLength(20);
 			});
 
 			// ── Multi-tenancy global query filters ───────────────────────────────────────
