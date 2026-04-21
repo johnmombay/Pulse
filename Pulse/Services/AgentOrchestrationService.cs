@@ -46,6 +46,17 @@ public sealed class AgentOrchestrationService(
             : GoogleAIVersion.V1_Beta;
 
     /// <summary>
+    /// Returns <c>true</c> for HTTP statuses Gemini emits transiently and that are safe
+    /// to retry when no response chunks have been streamed yet:
+    /// 429 (quota), 502 (bad gateway), 503 (model overloaded), 504 (gateway timeout).
+    /// </summary>
+    private static bool IsTransientStatus(System.Net.HttpStatusCode? code) => code is
+        System.Net.HttpStatusCode.TooManyRequests or
+        System.Net.HttpStatusCode.BadGateway or
+        System.Net.HttpStatusCode.ServiceUnavailable or
+        System.Net.HttpStatusCode.GatewayTimeout;
+
+    /// <summary>
     /// Pulls Gemini's <c>error.message</c> out of the JSON response body when present
     /// (Google's payload looks like <c>{"error":{"code":400,"message":"...","status":"..."}}</c>).
     /// Falls back to the raw body, then to the exception message.
@@ -241,7 +252,7 @@ public sealed class AgentOrchestrationService(
             chatHistory.SetSessionStatus(sessionId, "responding");
 
             var responseBuilder = new StringBuilder();
-            const int maxAttempts = 3;
+            const int maxAttempts = 5;
             Exception? lastError = null;
 
             for (var attempt = 1; attempt <= maxAttempts; attempt++)
@@ -321,19 +332,27 @@ public sealed class AgentOrchestrationService(
                     break; // success
                 }
                 catch (HttpOperationException ex) when (
-                    ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests &&
+                    IsTransientStatus(ex.StatusCode) &&
                     !streamedAnything &&
                     attempt < maxAttempts)
                 {
-                    // Park this key. Default 60s cooldown; honor Gemini's retryDelay hint when present.
-                    var cooldown = TryParseRetryAfter(ex) ?? TimeSpan.FromSeconds(60);
-                    keyRotation.MarkRateLimited(apiKey, cooldown);
+                    // 429 / 503 / 502 / 504 are transient. Park the key only on 429
+                    // (Google quota); for 5xx the model itself is overloaded so a
+                    // different key won't help — just back off and retry.
+                    if (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                    {
+                        var cooldown = TryParseRetryAfter(ex) ?? TimeSpan.FromSeconds(60);
+                        keyRotation.MarkRateLimited(apiKey, cooldown);
+                    }
 
-                    var backoff = TimeSpan.FromMilliseconds(500 * Math.Pow(2, attempt - 1));
+                    // Honor Gemini's retryDelay hint when present, else exponential backoff.
+                    var backoff = TryParseRetryAfter(ex)
+                                  ?? TimeSpan.FromMilliseconds(750 * Math.Pow(2, attempt - 1));
+
                     logger.LogWarning(
-                        "Session {SessionId}: Gemini 429 on attempt {Attempt}/{Max}. " +
-                        "Cooling down key for {Cooldown}s and retrying after {Backoff}ms.",
-                        sessionId, attempt, maxAttempts, cooldown.TotalSeconds, backoff.TotalMilliseconds);
+                        "Session {SessionId}: Gemini {Status} on attempt {Attempt}/{Max}. " +
+                        "Retrying after {Backoff}ms.",
+                        sessionId, (int)ex.StatusCode!, attempt, maxAttempts, backoff.TotalMilliseconds);
 
                     await Task.Delay(backoff, cancellationToken);
                     lastError = ex;
