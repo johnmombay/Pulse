@@ -19,6 +19,14 @@ public class AgentMemory : ITenantOwned
     [Required, MaxLength(450)]
     public string UserId { get; set; } = "";
 
+    /// <summary>
+    /// Agent this memory is scoped to. <c>null</c> means global — visible to the
+    /// orchestrator and to auto-extractions that occurred before any specialist tag.
+    /// Non-null values reference <c>AgentDefinitionEntity.Id</c>.
+    /// </summary>
+    [MaxLength(64)]
+    public string? AgentDefinitionId { get; set; }
+
     [Required, MaxLength(2000)]
     public string Content { get; set; } = "";
 

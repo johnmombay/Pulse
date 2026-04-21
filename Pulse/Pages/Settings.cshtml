@@ -13,6 +13,8 @@
     var agentMailSuccess   = TempData["AgentMailSuccess"] as string;
     var logoSuccess    = TempData["LogoSuccess"]    as string;
     var logoError      = TempData["LogoError"]      as string;
+    var agentSuccess   = TempData["AgentSuccess"]   as string;
+    var agentError     = TempData["AgentError"]     as string;
 }
 @section Styles {
 <style>
@@ -131,6 +133,20 @@
         <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
     </div>
 }
+@if (agentSuccess != null)
+{
+    <div id="agentSuccessAlert" class="alert alert-success alert-dismissible d-flex align-items-center gap-2 mb-4">
+        ✅ <span>@agentSuccess</span>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (agentError != null)
+{
+    <div id="agentErrorAlert" class="alert alert-danger alert-dismissible d-flex align-items-center gap-2 mb-4">
+        ❌ <span>@agentError</span>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+    </div>
+}
 @{
     var appNameSuccess = TempData["AppNameSuccess"] as string;
 }
@@ -236,6 +252,7 @@
     <li class="nav-item"><button type="button" class="nav-link" data-tab="mcp"     >🔌 MCP</button></li>
     <li class="nav-item"><button type="button" class="nav-link" data-tab="data"    >🗄️ Data</button></li>
     <li class="nav-item"><button type="button" class="nav-link" data-tab="skills"  >⚡ Skills</button></li>
+    <li class="nav-item"><button type="button" class="nav-link" data-tab="agents"  >🤖 Agents</button></li>
     <li class="nav-item"><button type="button" class="nav-link" data-tab="rag"     >🗂️ RAG</button></li>
     <li class="nav-item"><button type="button" class="nav-link" data-tab="memory"  >🧠 Memory</button></li>
     <li class="nav-item"><button type="button" class="nav-link" data-tab="terminal">🖥️ Terminal</button></li>
@@ -262,23 +279,25 @@
 
             <div class="mb-4">
                 <label asp-for="Input.ModelId" class="form-label fw-semibold">Model ID</label>
-                <input asp-for="Input.ModelId" class="form-control" list="geminiModelList"
+                <input asp-for="Input.ModelId" class="form-control"
                        placeholder="e.g. gemini-2.0-flash" autocomplete="off" spellcheck="false" />
-                <datalist id="geminiModelList">
-                    <option value="gemini-2.0-flash">gemini-2.0-flash — fast &amp; efficient (recommended)</option>
-                    <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite — lowest cost</option>
-                    <option value="gemini-2.5-pro-preview-05-06">gemini-2.5-pro-preview — highest capability</option>
-                    <option value="gemini-1.5-pro">gemini-1.5-pro — large context window</option>
-                    <option value="gemini-1.5-flash">gemini-1.5-flash</option>
-                </datalist>
                 <span asp-validation-for="Input.ModelId" class="text-danger small"></span>
-                <div class="mt-2 d-flex flex-wrap gap-1">
-                    <span class="text-muted small me-1 align-self-center">Quick select:</span>
-                    <span class="model-chip" data-model="gemini-2.0-flash">gemini-2.0-flash</span>
-                    <span class="model-chip" data-model="gemini-2.5-pro-preview-05-06">gemini-2.5-pro</span>
-                    <span class="model-chip" data-model="gemini-1.5-pro">gemini-1.5-pro</span>
-                    <span class="model-chip" data-model="gemini-1.5-flash">gemini-1.5-flash</span>
-                    <span class="model-chip" data-model="gemini-2.0-flash-lite">gemini-2.0-flash-lite</span>
+                <div class="form-text">
+                    Enter any Gemini model ID supported by your API key
+                    (e.g. <code>gemini-2.0-flash</code>, <code>gemini-2.5-flash</code>, <code>gemini-2.5-pro</code>).
+                    This value is sent to Google as-is.
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <label asp-for="Input.ApiVersion" class="form-label fw-semibold">Gemini API Version</label>
+                <select asp-for="Input.ApiVersion" class="form-select">
+                    <option value="V1Beta">v1beta (default — most models, including previews)</option>
+                    <option value="V1">v1 (stable GA endpoint)</option>
+                </select>
+                <div class="form-text">
+                    Switch to <code>v1</code> only if Google explicitly states the model lives there.
+                    Most preview / 3.x models are still served on <code>v1beta</code>.
                 </div>
             </div>
 
@@ -1222,6 +1241,407 @@
 
 </div><!-- /tab-pane-skills -->
 
+<div id="tab-pane-agents" class="settings-tab-pane pt-4">
+@* ═══════════════════════════════════════════════════════════════════════════
+   AGENT DEFINITIONS
+═══════════════════════════════════════════════════════════════════════════ *@
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white py-3 d-flex align-items-center justify-content-between">
+        <div class="settings-section-header">🤖 Agent Definitions</div>
+        <button type="button" class="btn btn-primary btn-sm" onclick="openAddAgentModal()">
+            ➕ Add Agent
+        </button>
+    </div>
+
+    @if (Model.AgentDefinitions.Count == 0)
+    {
+        <div class="card-body text-center py-5 text-muted">
+            <div style="font-size:2.5rem">🤖</div>
+            <p class="mt-2 mb-1">No agents configured yet.</p>
+            <p class="small">Define an orchestrator plus specialist agents to enable multi-agent routing. Without agents the system falls back to the legacy all-plugins mode.</p>
+            <button type="button" class="btn btn-outline-primary btn-sm mt-2" onclick="openAddAgentModal()">
+                ➕ Add your first agent
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3" style="width:2.5rem"></th>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Model</th>
+                        <th>Plugins</th>
+                        <th>Status</th>
+                        <th class="text-end pe-3">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var ag in Model.AgentDefinitions)
+                    {
+                        var agJsonAttr = System.Text.Json.JsonSerializer.Serialize(ag);
+                        <tr>
+                            <td class="ps-3 text-center" style="font-size:1.3rem">@ag.Icon</td>
+                            <td>
+                                <div class="fw-semibold">@ag.Name</div>
+                                @if (!string.IsNullOrWhiteSpace(ag.Description))
+                                {
+                                    <div class="text-muted small">@(ag.Description.Length > 60 ? ag.Description[..57] + "…" : ag.Description)</div>
+                                }
+                            </td>
+                            <td>
+                                @if (ag.IsOrchestrator)
+                                {
+                                    <span class="badge bg-primary">Orchestrator</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Specialist</span>
+                                }
+                            </td>
+                            <td class="text-muted small">
+                                @if (!string.IsNullOrWhiteSpace(ag.ModelId))
+                                {
+                                    <code class="small">@ag.ModelId</code>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">global</span>
+                                }
+                            </td>
+                            <td class="text-muted small">
+                                @ag.AllowedPluginKeys.Count plugin(s)
+                            </td>
+                            <td>
+                                @if (ag.IsEnabled)
+                                {
+                                    <span class="badge bg-success">Enabled</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Disabled</span>
+                                }
+                            </td>
+                            <td class="text-end pe-3">
+                                <div class="btn-group btn-group-sm">
+                                    <button type="button" class="btn btn-outline-secondary"
+                                            data-agent="@agJsonAttr"
+                                            onclick="openEditAgentModal(this)">
+                                        ✏️
+                                    </button>
+                                    <form method="post" asp-page-handler="ToggleAgent" class="d-inline">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@ag.Id" />
+                                        <button type="submit"
+                                                class="btn @(ag.IsEnabled ? "btn-outline-warning" : "btn-outline-success")"
+                                                title="@(ag.IsEnabled ? "Disable" : "Enable")">
+                                            @(ag.IsEnabled ? "⏸" : "▶")
+                                        </button>
+                                    </form>
+                                    @if (!ag.IsOrchestrator)
+                                    {
+                                        <button type="button" class="btn btn-outline-danger"
+                                                onclick="confirmDeleteAgent('@ag.Id','@Html.Raw(ag.Name.Replace("'","\\\'"))')">
+                                            🗑
+                                        </button>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer bg-white text-muted small py-2 px-3">
+            @Model.AgentDefinitions.Count agent(s) —
+            @Model.AgentDefinitions.Count(a => a.IsOrchestrator) orchestrator,
+            @Model.AgentDefinitions.Count(a => !a.IsOrchestrator) specialist(s),
+            @Model.AgentDefinitions.Count(a => a.IsEnabled) enabled
+        </div>
+    }
+</div>
+
+@* ── Hidden delete form ────────────────────────────────────────────────────── *@
+<form id="agentDeleteForm" method="post" asp-page-handler="DeleteAgent">
+    @Html.AntiForgeryToken()
+    <input type="hidden" id="agentDeleteId" name="id" value="" />
+</form>
+
+@* ═══════════════════════════════════════════════════════════════════════════
+   AGENT ADD / EDIT MODAL
+═══════════════════════════════════════════════════════════════════════════ *@
+<div class="modal fade" id="agentModal" tabindex="-1" aria-labelledby="agentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="agentModalLabel">Add Agent</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" asp-page-handler="SaveAgent" id="agentForm" novalidate>
+                @Html.AntiForgeryToken()
+                <div class="modal-body">
+
+                    <div id="agentModalError" class="alert alert-danger alert-dismissible py-2 px-3 mb-3 d-none" role="alert">
+                        <span id="agentModalErrorText"></span>
+                        <button type="button" class="btn-close btn-sm"
+                                onclick="document.getElementById('agentModalError').classList.add('d-none')"></button>
+                    </div>
+
+                    <input type="hidden" asp-for="AgentDef.Id" id="agentId" />
+
+                    @* ── Basic info ── *@
+                    <div class="row g-3 mb-3">
+                        <div class="col-auto" style="width:90px">
+                            <label asp-for="AgentDef.Icon" class="form-label fw-semibold">Icon</label>
+                            <input asp-for="AgentDef.Icon" id="agentIcon" class="form-control text-center"
+                                   placeholder="🤖" style="font-size:1.4rem" maxlength="6" />
+                        </div>
+                        <div class="col">
+                            <label asp-for="AgentDef.Name" class="form-label fw-semibold">
+                                Name <span class="text-danger">*</span>
+                            </label>
+                            <input asp-for="AgentDef.Name" id="agentName" class="form-control"
+                                   placeholder="e.g. Data Analyst, Document Writer, Researcher" />
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="AgentDef.Description" class="form-label fw-semibold">
+                            Description <span class="text-muted fw-normal small">(optional — shown to orchestrator for routing)</span>
+                        </label>
+                        <input asp-for="AgentDef.Description" id="agentDescription" class="form-control"
+                               placeholder="One-line summary of what this agent specialises in" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="AgentDef.SystemPrompt" class="form-label fw-semibold">
+                            System Prompt <span class="text-danger">*</span>
+                        </label>
+                        <textarea asp-for="AgentDef.SystemPrompt" id="agentSystemPrompt"
+                                  class="form-control" rows="5" spellcheck="true"
+                                  placeholder="You are a specialist agent that…"></textarea>
+                        <div class="form-text">Injected as the first system message for every turn this agent handles.</div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label asp-for="AgentDef.ModelId" class="form-label fw-semibold">
+                                Model Override <span class="text-muted fw-normal small">(optional)</span>
+                            </label>
+                            <input asp-for="AgentDef.ModelId" id="agentModelId" class="form-control"
+                                   list="agentGeminiModels" placeholder="Leave blank to use global model"
+                                   spellcheck="false" autocomplete="off" />
+                            <datalist id="agentGeminiModels">
+                                <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                                <option value="gemini-2.5-pro-preview-05-06">gemini-2.5-pro-preview</option>
+                                <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+                                <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+                                <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite</option>
+                            </datalist>
+                        </div>
+                        <div class="col-md-3">
+                            <label asp-for="AgentDef.SortOrder" class="form-label fw-semibold">Sort Order</label>
+                            <input asp-for="AgentDef.SortOrder" id="agentSortOrder" type="number"
+                                   class="form-control" min="0" max="999" />
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-4 mb-4">
+                        <div class="form-check form-switch">
+                            <input asp-for="AgentDef.IsOrchestrator" id="agentIsOrchestrator" class="form-check-input"
+                                   type="checkbox" role="switch" />
+                            <label asp-for="AgentDef.IsOrchestrator" class="form-check-label fw-semibold">
+                                Orchestrator
+                            </label>
+                            <div class="form-text" style="font-size:.75rem">Only one orchestrator allowed per tenant.</div>
+                        </div>
+                        <div class="form-check form-switch">
+                            <input asp-for="AgentDef.IsEnabled" id="agentIsEnabled" class="form-check-input"
+                                   type="checkbox" role="switch" checked />
+                            <label asp-for="AgentDef.IsEnabled" class="form-check-label fw-semibold">Enabled</label>
+                        </div>
+                    </div>
+
+                    <hr class="my-3" />
+
+                    @* ── Plugin Keys ── *@
+                    <div class="mb-3">
+                        <div class="fw-semibold mb-2">🔧 Allowed Plugins</div>
+                        <div class="form-text mb-2">Select which plugins this agent can invoke.</div>
+                        <div class="row g-2">
+                            @{
+                                var pluginDefs = new[]
+                                {
+                                    (Key: "Database",     Label: "🗄️ Database",      Hint: "Query SQL databases"),
+                                    (Key: "Excel",        Label: "📊 Excel",          Hint: "Generate Excel reports"),
+                                    (Key: "Pdf",          Label: "📄 PDF",            Hint: "Generate PDF documents"),
+                                    (Key: "Word",         Label: "📝 Word",           Hint: "Generate Word documents"),
+                                    (Key: "Chart",        Label: "📈 Chart",          Hint: "Render interactive charts"),
+                                    (Key: "FlatFileData", Label: "📁 Flat Files",     Hint: "Query CSV / Excel data sources"),
+                                    (Key: "Rag",          Label: "🗂️ RAG",            Hint: "Retrieve from knowledge base"),
+                                    (Key: "Mcp",          Label: "🔌 MCP",            Hint: "Call MCP servers"),
+                                    (Key: "Terminal",     Label: "🖥️ Terminal",       Hint: "Run shell commands"),
+                                    (Key: "AgentMail",    Label: "✉️ AgentMail",      Hint: "Send / receive email"),
+                                };
+                            }
+                            @foreach (var (key, label, hint) in pluginDefs)
+                            {
+                                <div class="col-6 col-md-4 col-lg-3">
+                                    <div class="form-check" title="@hint">
+                                        <input class="form-check-input agent-plugin-chk" type="checkbox"
+                                               name="AgentDef.AllowedPluginKeys"
+                                               value="@key"
+                                               id="agentPlugin_@key" />
+                                        <label class="form-check-label small" for="agentPlugin_@key">@label</label>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    @* ── Allowed Skills ── *@
+                    @if (Model.Skills.Count > 0)
+                    {
+                        <hr class="my-3" />
+                        <div class="mb-3">
+                            <div class="fw-semibold mb-2">⚡ Allowed Skills</div>
+                            <div class="form-text mb-2">Skill instructions injected into this agent's session.</div>
+                            <div class="row g-2">
+                                @foreach (var sk in Model.Skills)
+                                {
+                                    <div class="col-6 col-md-4">
+                                        <div class="form-check">
+                                            <input class="form-check-input agent-skill-chk" type="checkbox"
+                                                   name="AgentDef.AllowedSkillIds"
+                                                   value="@sk.Id"
+                                                   id="agentSkill_@sk.Id" />
+                                            <label class="form-check-label small" for="agentSkill_@sk.Id">
+                                                @sk.Icon @sk.Name
+                                            </label>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @* ── Allowed MCP Servers ── *@
+                    @if (Model.McpServers.Count > 0)
+                    {
+                        <hr class="my-3" />
+                        <div class="mb-3">
+                            <div class="fw-semibold mb-2">🔌 Allowed MCP Servers</div>
+                            <div class="row g-2">
+                                @foreach (var mcp in Model.McpServers)
+                                {
+                                    <div class="col-6 col-md-4">
+                                        <div class="form-check">
+                                            <input class="form-check-input agent-mcp-chk" type="checkbox"
+                                                   name="AgentDef.AllowedMcpServerIds"
+                                                   value="@mcp.Id"
+                                                   id="agentMcp_@mcp.Id" />
+                                            <label class="form-check-label small" for="agentMcp_@mcp.Id">
+                                                @mcp.Name
+                                                <span class="badge bg-light text-secondary ms-1" style="font-size:.65rem">@mcp.TransportType</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @* ── Allowed Database Connections ── *@
+                    @if (Model.DatabaseConnections.Any())
+                    {
+                        <hr class="my-3" />
+                        <div class="mb-3">
+                            <div class="fw-semibold mb-2">🗄️ Allowed Database Connections</div>
+                            <div class="row g-2">
+                                @foreach (var (dbId, dbEntry) in Model.DatabaseConnections)
+                                {
+                                    <div class="col-6 col-md-4">
+                                        <div class="form-check">
+                                            <input class="form-check-input agent-db-chk" type="checkbox"
+                                                   name="AgentDef.AllowedDatabaseKeys"
+                                                   value="@dbId"
+                                                   id="agentDb_@dbId" />
+                                            <label class="form-check-label small" for="agentDb_@dbId">
+                                                @(string.IsNullOrWhiteSpace(dbEntry.Label) ? dbId : dbEntry.Label)
+                                                <code class="small text-muted ms-1">@dbId</code>
+                                            </label>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @* ── Allowed Flat-File Sources ── *@
+                    @if (Model.FlatFileSources.Count > 0)
+                    {
+                        <hr class="my-3" />
+                        <div class="mb-3">
+                            <div class="fw-semibold mb-2">📁 Allowed Flat-File Sources</div>
+                            <div class="row g-2">
+                                @foreach (var ff in Model.FlatFileSources)
+                                {
+                                    <div class="col-6 col-md-4">
+                                        <div class="form-check">
+                                            <input class="form-check-input agent-ff-chk" type="checkbox"
+                                                   name="AgentDef.AllowedFlatFileIds"
+                                                   value="@ff.Id"
+                                                   id="agentFf_@ff.Id" />
+                                            <label class="form-check-label small" for="agentFf_@ff.Id">
+                                                @ff.Label
+                                            </label>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @* ── Allowed RAG Documents ── *@
+                    @if (Model.RagDocuments.Count > 0)
+                    {
+                        <hr class="my-3" />
+                        <div class="mb-3">
+                            <div class="fw-semibold mb-2">🗂️ Allowed RAG Documents</div>
+                            <div class="row g-2">
+                                @foreach (var rd in Model.RagDocuments)
+                                {
+                                    <div class="col-6 col-md-4">
+                                        <div class="form-check">
+                                            <input class="form-check-input agent-rag-chk" type="checkbox"
+                                                   name="AgentDef.AllowedRagDocumentIds"
+                                                   value="@rd.Id"
+                                                   id="agentRag_@rd.Id" />
+                                            <label class="form-check-label small" for="agentRag_@rd.Id">
+                                                @rd.Name
+                                            </label>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" id="agentSaveBtn" class="btn btn-primary">💾 Save Agent</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+</div><!-- /tab-pane-agents -->
+
 <div id="tab-pane-rag" class="settings-tab-pane pt-4">
 @* ═══════════════════════════════════════════════════════════════════════════
    RAG DOCUMENTS
@@ -1905,13 +2325,6 @@
         const el = document.getElementById(id);
         if (el) setTimeout(() => bootstrap.Alert.getOrCreateInstance(el).close(), 4000);
     });
-
-    // ── LLM: model chips (SuperAdmin only — elements may not exist) ──────────
-    const modelInput = document.querySelector('[name="Input.ModelId"]');
-    if (modelInput) {
-        document.querySelectorAll('.model-chip').forEach(c =>
-            c.addEventListener('click', () => { modelInput.value = c.dataset.model; modelInput.focus(); }));
-    }
 
     // ── LLM: API key list (SuperAdmin only) ──────────────────────────────────
     const keysContainer = document.getElementById('keysContainer');
@@ -2953,6 +3366,96 @@
 
     // init format-dependent field visibility on page load
     onFfFormatChange();
+
+    // ── Agent modal ───────────────────────────────────────────────────────────
+    (function () {
+
+        function clearAgentModal() {
+            document.getElementById('agentId').value           = '';
+            document.getElementById('agentName').value         = '';
+            document.getElementById('agentIcon').value         = '🤖';
+            document.getElementById('agentDescription').value  = '';
+            document.getElementById('agentSystemPrompt').value = '';
+            document.getElementById('agentModelId').value      = '';
+            document.getElementById('agentSortOrder').value    = '0';
+            document.getElementById('agentIsOrchestrator').checked = false;
+            document.getElementById('agentIsEnabled').checked      = true;
+            document.querySelectorAll('.agent-plugin-chk, .agent-skill-chk, .agent-mcp-chk, .agent-db-chk, .agent-ff-chk, .agent-rag-chk')
+                .forEach(c => c.checked = false);
+            document.getElementById('agentModalError').classList.add('d-none');
+        }
+
+        window.openAddAgentModal = function () {
+            clearAgentModal();
+            document.getElementById('agentModalLabel').textContent = 'Add Agent';
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('agentModal')).show();
+            setTimeout(() => document.getElementById('agentName').focus(), 300);
+        };
+
+        window.openEditAgentModal = function (btn) {
+            clearAgentModal();
+            // System.Text.Json serialises C# PascalCase property names as-is
+            const agent = JSON.parse(btn.dataset.agent);
+            document.getElementById('agentModalLabel').textContent = `Edit Agent — ${agent.Name}`;
+            document.getElementById('agentId').value           = agent.Id ?? '';
+            document.getElementById('agentName').value         = agent.Name ?? '';
+            document.getElementById('agentIcon').value         = agent.Icon ?? '🤖';
+            document.getElementById('agentDescription').value  = agent.Description ?? '';
+            document.getElementById('agentSystemPrompt').value = agent.SystemPrompt ?? '';
+            document.getElementById('agentModelId').value      = agent.ModelId ?? '';
+            document.getElementById('agentSortOrder').value    = agent.SortOrder ?? 0;
+            document.getElementById('agentIsOrchestrator').checked = !!agent.IsOrchestrator;
+            document.getElementById('agentIsEnabled').checked      = agent.IsEnabled !== false;
+
+            const setChecked = (selector, idList) => {
+                const ids = new Set(idList ?? []);
+                document.querySelectorAll(selector).forEach(c => { c.checked = ids.has(c.value); });
+            };
+            setChecked('.agent-plugin-chk', agent.AllowedPluginKeys);
+            setChecked('.agent-skill-chk',  agent.AllowedSkillIds);
+            setChecked('.agent-mcp-chk',    agent.AllowedMcpServerIds);
+            setChecked('.agent-db-chk',     agent.AllowedDatabaseKeys);
+            setChecked('.agent-ff-chk',     agent.AllowedFlatFileIds);
+            setChecked('.agent-rag-chk',    agent.AllowedRagDocumentIds);
+
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('agentModal')).show();
+        };
+
+        window.confirmDeleteAgent = function (id, name) {
+            if (!confirm(`Delete agent "${name}"?\n\nThis cannot be undone.`)) return;
+            document.getElementById('agentDeleteId').value = id;
+            document.getElementById('agentDeleteForm').submit();
+        };
+
+        // AJAX save
+        document.getElementById('agentForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const btn  = document.getElementById('agentSaveBtn');
+            const orig = btn.innerHTML;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+            btn.disabled  = true;
+            document.getElementById('agentModalError').classList.add('d-none');
+
+            try {
+                const res  = await fetch('?handler=SaveAgent', { method: 'POST', body: new FormData(this) });
+                const data = await res.json();
+                if (data.success) {
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById('agentModal')).hide();
+                    window.location.reload();
+                } else {
+                    document.getElementById('agentModalErrorText').textContent = data.error ?? 'Save failed.';
+                    document.getElementById('agentModalError').classList.remove('d-none');
+                }
+            } catch {
+                document.getElementById('agentModalErrorText').textContent = 'Network error — please try again.';
+                document.getElementById('agentModalError').classList.remove('d-none');
+            } finally {
+                btn.innerHTML = orig;
+                btn.disabled  = false;
+            }
+        });
+
+    })();
 
     // ── Settings tabs ─────────────────────────────────────────────────────────
     (function () {

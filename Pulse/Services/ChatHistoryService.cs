@@ -120,6 +120,22 @@ public sealed class ChatHistoryService(IDbContextFactory<ApplicationDbContext> d
 
     public IReadOnlyCollection<string> ActiveSessionIds => _sessions.Keys.ToList();
 
+    /// <summary>
+    /// Replaces (or inserts at position 0) the system message for the given session.
+    /// Called by the orchestrator to set the agent-configured system prompt before
+    /// memory and skill messages are appended.
+    /// </summary>
+    public void SetSessionSystemPrompt(string sessionId, string prompt)
+    {
+        var history = GetSkHistory(sessionId);
+        var systemMsg = new Microsoft.SemanticKernel.ChatMessageContent(
+            Microsoft.SemanticKernel.ChatCompletion.AuthorRole.System, prompt);
+        if (history.Count > 0 && history[0].Role == Microsoft.SemanticKernel.ChatCompletion.AuthorRole.System)
+            history[0] = systemMsg;
+        else
+            history.Insert(0, systemMsg);
+    }
+
     // ── Active-session status (thinking | responding) ─────────────────────────
 
     private readonly ConcurrentDictionary<string, string> _statuses = new();

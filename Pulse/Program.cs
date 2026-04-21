@@ -102,6 +102,7 @@ builder.Services.AddSingleton<RagService>();
 builder.Services.AddScoped<MemoryService>();
 builder.Services.AddTransient<McpService>();
 builder.Services.AddTransient<AgentOrchestrationService>();
+builder.Services.AddTransient<SpecializedAgentRunner>();
 builder.Services.AddTransient<AgentTaskJob>();
 builder.Services.AddTransient<MemoryExtractionJob>();
 
@@ -209,6 +210,9 @@ using (var startupScope = app.Services.CreateScope())
 	{
 		await userManager.AddToRoleAsync(existingAdmin, "SuperAdmin");
 	}
+
+	// Seed default agent definitions for tenants that have none yet
+	await Pulse.Services.LlmSettingsSeeder.SeedAgentDefinitionsAsync(db);
 
 	// Re-register all enabled recurring tasks with Hangfire after restart
 	var scheduler = startupScope.ServiceProvider.GetRequiredService<Pulse.Services.SchedulerService>();

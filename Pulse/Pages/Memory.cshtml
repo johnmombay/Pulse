@@ -22,9 +22,44 @@
                 Facts and preferences the agent remembers about you across every session.
             </p>
         </div>
-        <button type="button" class="btn btn-primary" onclick="openAddMemoryModal()">
-            ➕ Add Memory
-        </button>
+        <div class="d-flex gap-2 align-items-center">
+            <form method="get" class="d-flex gap-2 align-items-center mb-0">
+                <label class="form-label mb-0 text-muted small">Agent:</label>
+                <select name="AgentFilter" class="form-select form-select-sm" style="width:160px"
+                        onchange="this.form.submit()">
+                    @if (string.IsNullOrEmpty(Model.AgentFilter))
+                    {
+                        <option value="" selected>All</option>
+                    }
+                    else
+                    {
+                        <option value="">All</option>
+                    }
+                    @if (Model.AgentFilter == "global")
+                    {
+                        <option value="global" selected>🌐 Global</option>
+                    }
+                    else
+                    {
+                        <option value="global">🌐 Global</option>
+                    }
+                    @foreach (var agent in Model.AgentDefinitions.Where(a => !a.IsOrchestrator))
+                    {
+                        @if (Model.AgentFilter == agent.Id)
+                        {
+                            <option value="@agent.Id" selected>@agent.Icon @agent.Name</option>
+                        }
+                        else
+                        {
+                            <option value="@agent.Id">@agent.Icon @agent.Name</option>
+                        }
+                    }
+                </select>
+            </form>
+            <button type="button" class="btn btn-primary btn-sm" onclick="openAddMemoryModal()">
+                ➕ Add Memory
+            </button>
+        </div>
     </div>
 
     @if (!Model.Memories.Any())
@@ -62,6 +97,7 @@
                     <thead class="table-light">
                         <tr>
                             <th class="ps-3">Memory</th>
+                            <th style="width:130px">Agent</th>
                             <th style="width:110px">Category</th>
                             <th style="width:100px">Importance</th>
                             <th style="width:80px">Source</th>
@@ -75,6 +111,22 @@
                             <tr class="@(mem.IsActive ? "" : "table-secondary text-muted")">
                                 <td class="ps-3">
                                     <span class="memory-content small">@mem.Content</span>
+                                </td>
+                                <td>
+                                    @{
+                                        var agentDef = mem.AgentDefinitionId is null ? null
+                                            : Model.AgentDefinitions.FirstOrDefault(a => a.Id == mem.AgentDefinitionId);
+                                    }
+                                    @if (agentDef is not null)
+                                    {
+                                        <span class="badge bg-light text-secondary border small">
+                                            @agentDef.Icon @agentDef.Name
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-light text-muted border small">🌐 Global</span>
+                                    }
                                 </td>
                                 <td>
                                     @if (!string.IsNullOrWhiteSpace(mem.Category))

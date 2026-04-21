@@ -21,19 +21,21 @@ public sealed class MemoryExtractionJob(
         string userId,
         string userMessage,
         string assistantResponse,
+        string? agentDefinitionId,
         IJobCancellationToken jobCt)
     {
         tenantContext.SetTenantId(tenantId);
         if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(assistantResponse))
             return;
 
-        logger.LogDebug("MemoryExtractionJob: extracting for user {UserId}", userId);
+        logger.LogDebug("MemoryExtractionJob: extracting for user {UserId} agent {AgentId}",
+            userId, agentDefinitionId ?? "global");
 
         // MemoryService depends on DbContext which is scoped — create a scope explicitly
         await using var scope = scopeFactory.CreateAsyncScope();
         var memoryService     = scope.ServiceProvider.GetRequiredService<MemoryService>();
 
         await memoryService.ExtractFromExchangeAsync(
-            userId, userMessage, assistantResponse, jobCt.ShutdownToken);
+            userId, userMessage, assistantResponse, agentDefinitionId, jobCt.ShutdownToken);
     }
 }

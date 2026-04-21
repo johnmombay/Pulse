@@ -80,6 +80,12 @@ public class SettingsModel(
 
     public IReadOnlyList<FlatFileDataSource> FlatFileSources { get; private set; } = [];
 
+    // ── Agents ────────────────────────────────────────────────────────────────
+    [BindProperty]
+    public AgentInput AgentDef { get; set; } = new();
+
+    public IReadOnlyList<AgentDefinition> AgentDefinitions { get; private set; } = [];
+
     // ── Terminal ──────────────────────────────────────────────────────────────
     [BindProperty]
     public TerminalInput Terminal { get; set; } = new();
@@ -103,6 +109,7 @@ public class SettingsModel(
     {
         var current = await settingsService.GetAsync(TenantId);
         Input.ModelId    = current.ModelId;
+        Input.ApiVersion = string.IsNullOrWhiteSpace(current.ApiVersion) ? "V1Beta" : current.ApiVersion;
         Input.ApiKeys    = current.ApiKeys.Count > 0 ? [.. current.ApiKeys] : [""];
         AppName          = current.AppName ?? "Pulse";
         McpServers       = current.McpServers   ?? [];
@@ -116,6 +123,11 @@ public class SettingsModel(
 
         FlatFileSources = (current.FlatFileSources ?? [])
             .OrderBy(s => s.Label)
+            .ToList();
+
+        AgentDefinitions = (current.AgentDefinitions ?? [])
+            .OrderBy(a => a.SortOrder)
+            .ThenBy(a => a.Name)
             .ToList();
 
         CurrentLogoFileName = current.LogoFileName;
@@ -155,8 +167,14 @@ public class SettingsModel(
         if (!User.IsInRole("SuperAdmin"))
             return Forbid();
 
-        // Remove all McpServer.* entries — they are not part of the LLM form
-        RemoveModelStatePrefix(nameof(McpServer));
+        // The page hosts many [BindProperty] modal inputs (McpServer, Skill, RagDoc,
+        // DbConn, FlatFile, AgentDef, MemInput, Terminal, AgentMail, Security, …) each
+        // with [Required] fields that are NOT part of the LLM form. Keep only Input.*
+        // ModelState entries so unrelated validation errors can't block this save.
+        var nonLlmKeys = ModelState.Keys
+            .Where(k => !k.StartsWith("Input.", StringComparison.Ordinal) && k != "Input")
+            .ToList();
+        foreach (var key in nonLlmKeys) ModelState.Remove(key);
 
         if (!ModelState.IsValid)
         {
@@ -174,6 +192,7 @@ public class SettingsModel(
         {
             AppName             = current.AppName ?? "Pulse",
             ModelId             = Input.ModelId.Trim(),
+            ApiVersion          = string.IsNullOrWhiteSpace(Input.ApiVersion) ? "V1Beta" : Input.ApiVersion.Trim(),
             ApiKeys             = cleanKeys,
             McpServers          = current.McpServers          ?? [],
             Skills              = current.Skills              ?? [],
@@ -302,6 +321,79 @@ public class SettingsModel(
     public async Task<IActionResult> OnPostToggleSkillAsync(string id)
     {
         await settingsService.ToggleSkillAsync(TenantId, id);
+        return RedirectToPage();
+    }
+
+    // ── Agents: add or update (AJAX) ──────────────────────────────────────────
+    public async Task<IActionResult> OnPostSaveAgentAsync()
+    {
+        if (string.IsNullOrWhiteSpace(AgentDef?.Name))
+            return new JsonResult(new { success = false, error = "Name is required." });
+
+        if (string.IsNullOrWhiteSpace(AgentDef.SystemPrompt))
+            return new JsonResult(new { success = false, error = "System prompt is required." });
+
+        try
+        {
+            var isNew = string.IsNullOrWhiteSpace(AgentDef.Id);
+            var agent = new AgentDefinition
+            {
+                Id                    = isNew ? Guid.NewGuid().ToString("N") : AgentDef.Id,
+                Name                  = AgentDef.Name.Trim(),
+                Icon                  = string.IsNullOrWhiteSpace(AgentDef.Icon) ? "🤖" : AgentDef.Icon.Trim(),
+                Description           = AgentDef.Description?.Trim() ?? "",
+                SystemPrompt          = AgentDef.SystemPrompt.Trim(),
+                ModelId               = string.IsNullOrWhiteSpace(AgentDef.ModelId) ? null : AgentDef.ModelId.Trim(),
+                IsEnabled             = AgentDef.IsEnabled,
+                IsOrchestrator        = AgentDef.IsOrchestrator,
+                SortOrder             = AgentDef.SortOrder,
+                AllowedPluginKeys     = AgentDef.AllowedPluginKeys     ?? [],
+                AllowedSkillIds       = AgentDef.AllowedSkillIds       ?? [],
+                AllowedMcpServerIds   = AgentDef.AllowedMcpServerIds   ?? [],
+                AllowedDatabaseKeys   = AgentDef.AllowedDatabaseKeys   ?? [],
+                AllowedFlatFileIds    = AgentDef.AllowedFlatFileIds    ?? [],
+                AllowedRagDocumentIds = AgentDef.AllowedRagDocumentIds ?? [],
+            };
+
+            await settingsService.AddOrUpdateAgentDefinitionAsync(TenantId, agent);
+
+            return new JsonResult(new
+            {
+                success = true,
+                message = $"Agent \"{agent.Name}\" {(isNew ? "added" : "updated")}."
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new JsonResult(new { success = false, error = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return new JsonResult(new { success = false, error = $"Save failed: {ex.Message}" })
+            { StatusCode = 500 };
+        }
+    }
+
+    // ── Agents: delete ────────────────────────────────────────────────────────
+    public async Task<IActionResult> OnPostDeleteAgentAsync(string id)
+    {
+        var current = await settingsService.GetAsync(TenantId);
+        var agent = current.AgentDefinitions.FirstOrDefault(a => a.Id == id);
+        if (agent?.IsOrchestrator == true)
+        {
+            TempData["AgentError"] = "The orchestrator agent cannot be deleted. Disable it instead.";
+            return RedirectToPage();
+        }
+
+        await settingsService.DeleteAgentDefinitionAsync(TenantId, id);
+        TempData["AgentSuccess"] = "Agent removed.";
+        return RedirectToPage();
+    }
+
+    // ── Agents: toggle enabled ────────────────────────────────────────────────
+    public async Task<IActionResult> OnPostToggleAgentAsync(string id)
+    {
+        await settingsService.ToggleAgentDefinitionAsync(TenantId, id);
         return RedirectToPage();
     }
 
@@ -947,7 +1039,11 @@ public class SettingsModel(
     public class LlmInput
     {
         [Required(ErrorMessage = "Model ID is required.")]
-        public string ModelId { get; set; } = "gemini-2.0-flash";
+        public string ModelId { get; set; } = "";
+
+        /// <summary>Google Gemini API version: "V1Beta" or "V1".</summary>
+        public string ApiVersion { get; set; } = "V1Beta";
+
         public List<string> ApiKeys { get; set; } = [];
     }
 
@@ -1086,6 +1182,39 @@ public class SettingsModel(
         public string         Encoding        { get; set; } = "UTF-8";
         public int            MaxRows         { get; set; } = 1000;
         public string?        FixedWidthSpec  { get; set; }
+    }
+
+    public class AgentInput
+    {
+        public string Id { get; set; } = "";
+
+        [Required(ErrorMessage = "Name is required.")]
+        [MaxLength(80)]
+        public string Name { get; set; } = "";
+
+        [MaxLength(10)]
+        public string Icon { get; set; } = "🤖";
+
+        [MaxLength(300)]
+        public string Description { get; set; } = "";
+
+        [Required(ErrorMessage = "System prompt is required.")]
+        public string SystemPrompt { get; set; } = "";
+
+        public string? ModelId { get; set; }
+
+        public bool IsEnabled      { get; set; } = true;
+        public bool IsOrchestrator { get; set; } = false;
+
+        [Range(0, 999)]
+        public int SortOrder { get; set; } = 0;
+
+        public List<string> AllowedPluginKeys     { get; set; } = [];
+        public List<string> AllowedSkillIds       { get; set; } = [];
+        public List<string> AllowedMcpServerIds   { get; set; } = [];
+        public List<string> AllowedDatabaseKeys   { get; set; } = [];
+        public List<string> AllowedFlatFileIds    { get; set; } = [];
+        public List<string> AllowedRagDocumentIds { get; set; } = [];
     }
 }
 

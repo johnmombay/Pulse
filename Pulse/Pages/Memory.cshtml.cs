@@ -1,3 +1,4 @@
+using Pulse.Infrastructure;
 using Pulse.Models;
 using Pulse.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -9,9 +10,23 @@ using System.Security.Claims;
 namespace Pulse.Pages;
 
 [Authorize]
-public class MemoryModel(MemoryService memoryService) : PageModel
+public class MemoryModel(
+    MemoryService memoryService,
+    LlmSettingsService llmSettings,
+    ITenantContext tenantContext) : PageModel
 {
     public IReadOnlyList<AgentMemory> Memories { get; private set; } = [];
+
+    /// <summary>Agent definitions available for the filter dropdown.</summary>
+    public IReadOnlyList<AgentDefinition> AgentDefinitions { get; private set; } = [];
+
+    /// <summary>
+    /// Current filter value bound from the query string.
+    /// <c>null</c> or empty = All; <c>"global"</c> = Global (null AgentDefinitionId);
+    /// any other value = specific AgentDefinitionId.
+    /// </summary>
+    [BindProperty(SupportsGet = true)]
+    public string? AgentFilter { get; set; }
 
     [BindProperty] public MemoryInput Input { get; set; } = new();
 
@@ -19,7 +34,20 @@ public class MemoryModel(MemoryService memoryService) : PageModel
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
     public async Task OnGetAsync()
-        => Memories = await memoryService.GetAllAsync(UserId);
+    {
+        var tenantId = tenantContext.TenantId ?? Guid.Empty;
+        var settings = await llmSettings.GetAsync(tenantId);
+        AgentDefinitions = settings.AgentDefinitions ?? [];
+
+        var all = await memoryService.GetAllAsync(UserId);
+
+        Memories = AgentFilter switch
+        {
+            null or "" => all,
+            "global"   => all.Where(m => m.AgentDefinitionId == null).ToList(),
+            var id     => all.Where(m => m.AgentDefinitionId == id).ToList(),
+        };
+    }
 
     // ── Add / Update (AJAX) ───────────────────────────────────────────────────
     public async Task<IActionResult> OnPostSaveAsync()

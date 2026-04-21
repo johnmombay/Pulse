@@ -31,7 +31,7 @@ public sealed class AgentTaskJob(
         if (!string.IsNullOrWhiteSpace(userId) && !string.IsNullOrWhiteSpace(response))
         {
             BackgroundJob.Enqueue<MemoryExtractionJob>(j =>
-                j.ExtractAsync(tenantId, userId, userMessage, response, JobCancellationToken.Null));
+                j.ExtractAsync(tenantId, userId, userMessage, response, null, JobCancellationToken.Null));
         }
     }
 }

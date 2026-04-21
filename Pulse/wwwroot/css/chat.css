@@ -721,3 +721,90 @@ html[data-theme="dark"] .input-needed-badge {
 html[data-theme="dark"] .bp-chart-error { background: #2d1b1b; border-color: #5c2020; color: #fca5a5; }
 
 @media (max-width: 640px) { .bp-chart-canvas { max-height: 200px; } }
+
+/* ── Sub-agent nested cards ------------------------------------------- */
+.sub-agents-container {
+    display: flex;
+    flex-direction: column;
+    gap: .45rem;
+    margin-bottom: .5rem;
+}
+.sub-agents-container:empty { display: none; }
+
+.sub-agent-card {
+    border-left: 3px solid var(--c-accent);
+    border-radius: 0 .55rem .55rem 0;
+    background: var(--c-accent-dim);
+    overflow: hidden;
+    font-size: .84rem;
+}
+html[data-theme="dark"] .sub-agent-card {
+    border-left-color: var(--c-accent);
+    background: var(--c-accent-dim);
+}
+
+.sub-agent-summary {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .38rem .65rem;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    color: var(--c-text2);
+    font-weight: 500;
+}
+.sub-agent-summary::-webkit-details-marker { display: none; }
+.sub-agent-summary::marker { display: none; }
+
+/* chevron injected via ::before */
+.sub-agent-summary::before {
+    content: '▶';
+    font-size: .6rem;
+    color: var(--c-muted);
+    transition: transform .15s;
+    flex-shrink: 0;
+}
+.sub-agent-card[open] .sub-agent-summary::before { transform: rotate(90deg); }
+
+.sub-agent-icon {
+    font-size: .95rem;
+    flex-shrink: 0;
+}
+.sub-agent-name {
+    flex: 1;
+    color: var(--c-accent);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.sub-agent-spinner {
+    flex-shrink: 0;
+    color: var(--c-muted);
+}
+.sub-agent-spinner .spinner-border {
+    width: .75rem;
+    height: .75rem;
+    border-width: .15em;
+}
+
+.sub-agent-content {
+    padding: .35rem .65rem .45rem 1.75rem;
+    color: var(--c-text);
+    line-height: 1.55;
+    border-top: 1px solid rgba(0,0,0,.06);
+}
+html[data-theme="dark"] .sub-agent-content {
+    border-top-color: rgba(255,255,255,.06);
+}
+.sub-agent-content > *:last-child { margin-bottom: 0; }
+.sub-agent-content p  { margin-bottom: .35rem; }
+.sub-agent-content ul,
+.sub-agent-content ol { padding-left: 1.2em; margin-bottom: .35rem; }
+.sub-agent-content code {
+    background: rgba(0,0,0,.06);
+    border-radius: .2rem;
+    padding: .1em .3em;
+    font-size: .8rem;
+}
+html[data-theme="dark"] .sub-agent-content code { background: rgba(255,255,255,.1); }

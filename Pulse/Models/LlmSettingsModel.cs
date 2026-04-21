@@ -8,7 +8,10 @@ public class LlmSettingsModel
     public string AppName { get; set; } = "Pulse";
 
     [Required(ErrorMessage = "Model ID is required.")]
-    public string ModelId { get; set; } = "gemini-2.0-flash";
+    public string ModelId { get; set; } = default!;
+
+    /// <summary>Google Gemini API version: "V1Beta" (default) or "V1".</summary>
+    public string ApiVersion { get; set; } = "V1Beta";
 
     public List<string> ApiKeys { get; set; } = [];
 
@@ -39,6 +42,9 @@ public class LlmSettingsModel
 
     /// <summary>Login lockout / security settings.</summary>
     public SecuritySettings Security { get; set; } = new();
+
+    /// <summary>Specialized agent definitions (role + curated plugin subset).</summary>
+    public List<AgentDefinition> AgentDefinitions { get; set; } = [];
 
     /// <summary>Filename of the uploaded sidebar logo stored under wwwroot/images/.</summary>
     public string? LogoFileName { get; set; }

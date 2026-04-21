@@ -110,6 +110,8 @@ public sealed class LlmSettingsService
             .Where(f => f.TenantId == tenantId).ToListAsync();
         var dbConns = await db.DatabaseConnections.IgnoreQueryFilters()
             .Where(d => d.TenantId == tenantId).ToListAsync();
+        var agentDefs = await db.AgentDefinitions.IgnoreQueryFilters()
+            .Where(a => a.TenantId == tenantId).ToListAsync();
 
         db.AppApiKeys.RemoveRange(apiKeys);
         db.McpServers.RemoveRange(mcpServers);
@@ -117,6 +119,7 @@ public sealed class LlmSettingsService
         db.RagDocuments.RemoveRange(ragDocs);
         db.FlatFileSources.RemoveRange(flatFiles);
         db.DatabaseConnections.RemoveRange(dbConns);
+        db.AgentDefinitions.RemoveRange(agentDefs);
         await db.SaveChangesAsync();
 
         // TODO(multi-tenancy): AppApiKeyEntity does not yet have TenantId; keys are shared across tenants for now.
@@ -129,6 +132,7 @@ public sealed class LlmSettingsService
         db.DatabaseConnections.AddRange(
             (model.DatabaseConnections ?? new(StringComparer.OrdinalIgnoreCase))
                 .Select(kv => ToEntity(kv.Key, kv.Value, tenantId)));
+        db.AgentDefinitions.AddRange((model.AgentDefinitions ?? []).Select(a => ToEntity(a, tenantId)));
 
         await db.SaveChangesAsync();
         await tx.CommitAsync();
@@ -184,6 +188,51 @@ public sealed class LlmSettingsService
 
     public async Task ToggleDatabaseConnectionAsync(Guid tenantId, string id) =>
         await ToggleCollectionAsync(tenantId, db => db.DatabaseConnections, id, e => e.IsEnabled = !e.IsEnabled);
+
+    // ── AgentDefinition helpers ──────────────────────────────────────────────────
+
+    public async Task AddOrUpdateAgentDefinitionAsync(Guid tenantId, AgentDefinition agent)
+    {
+        if (agent.IsOrchestrator)
+        {
+            await using var check = await _dbFactory.CreateDbContextAsync();
+            var existing = await check.AgentDefinitions.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.IsOrchestrator && a.Id != agent.Id);
+            if (existing is not null)
+                throw new InvalidOperationException(
+                    $"Tenant already has an orchestrator agent (\"{existing.Name}\"). Clear IsOrchestrator on that row first.");
+        }
+        await UpsertCollectionAsync(tenantId, db => db.AgentDefinitions, agent.Id,
+            e => ApplyAgentDefinition(e, agent), () => ToEntity(agent, tenantId));
+    }
+
+    public async Task DeleteAgentDefinitionAsync(Guid tenantId, string id) =>
+        await DeleteCollectionAsync(tenantId, db => db.AgentDefinitions, id);
+
+    public async Task ToggleAgentDefinitionAsync(Guid tenantId, string id) =>
+        await ToggleCollectionAsync(tenantId, db => db.AgentDefinitions, id, e => e.IsEnabled = !e.IsEnabled);
+
+    /// <summary>
+    /// Returns the orchestrator <see cref="AgentDefinition"/> for <paramref name="tenantId"/>,
+    /// or a hardcoded fallback default if none exists yet (e.g. before seeder completes).
+    /// </summary>
+    public async Task<AgentDefinition> GetOrchestratorAsync(Guid tenantId)
+    {
+        var settings = await GetAsync(tenantId);
+        return settings.AgentDefinitions.FirstOrDefault(a => a.IsOrchestrator)
+            ?? new AgentDefinition
+            {
+                Id             = "orchestrator-default",
+                Name           = "Orchestrator",
+                Icon           = "🧠",
+                IsOrchestrator = true,
+                IsEnabled      = true,
+                SystemPrompt   =
+                    "You are the Pulse orchestrator. Delegate complete, self-contained sub-tasks to specialist agents via DelegateTo<Name>(task). " +
+                    "You may call multiple specialists sequentially and combine their results. " +
+                    "Answer directly only for trivial queries that need no tools."
+            };
+    }
 
     // ── Flat-file data source helpers ────────────────────────────────────────────
 
@@ -320,11 +369,15 @@ public sealed class LlmSettingsService
                            .Where(f => f.TenantId == tenantId).ToListAsync();
             var dbc  = await db.DatabaseConnections.IgnoreQueryFilters().AsNoTracking()
                            .Where(d => d.TenantId == tenantId).ToListAsync();
+            var agents = await db.AgentDefinitions.IgnoreQueryFilters().AsNoTracking()
+                           .Where(a => a.TenantId == tenantId)
+                           .OrderBy(a => a.SortOrder).ToListAsync();
 
             return new LlmSettingsModel
             {
                 AppName          = row?.AppName      ?? "Pulse",
-                ModelId          = row?.ModelId      ?? "gemini-2.0-flash",
+                ModelId          = row?.ModelId      ?? "",
+                ApiVersion       = string.IsNullOrWhiteSpace(row?.ApiVersion) ? "V1Beta" : row!.ApiVersion,
                 LogoFileName     = row?.LogoFileName,
                 LogoVersion      = row?.LogoVersion,
                 TerminalSettings = row?.Terminal     ?? new(),
@@ -339,6 +392,7 @@ public sealed class LlmSettingsService
                     e => e.Id,
                     FromEntity,
                     StringComparer.OrdinalIgnoreCase),
+                AgentDefinitions = agents.Select(FromEntity).ToList(),
             };
         }
         finally
@@ -353,6 +407,7 @@ public sealed class LlmSettingsService
     {
         row.AppName      = m.AppName;
         row.ModelId      = m.ModelId;
+        row.ApiVersion   = string.IsNullOrWhiteSpace(m.ApiVersion) ? "V1Beta" : m.ApiVersion;
         row.LogoFileName = m.LogoFileName;
         row.LogoVersion  = m.LogoVersion;
         row.Terminal     = Clone(m.TerminalSettings ?? new());
@@ -466,6 +521,44 @@ public sealed class LlmSettingsService
         Label = e.Label, Provider = e.Provider, ConnectionString = e.ConnectionString,
         IsEnabled = e.IsEnabled, ReadOnly = e.ReadOnly, MaxRows = e.MaxRows,
         AllowedSchemas = DeserializeList(e.AllowedSchemasJson)
+    };
+
+    private static AgentDefinitionEntity ToEntity(AgentDefinition a, Guid tenantId) => new()
+    {
+        Id = a.Id, Name = a.Name, Icon = a.Icon, Description = a.Description,
+        SystemPrompt = a.SystemPrompt, ModelId = a.ModelId,
+        IsEnabled = a.IsEnabled, IsOrchestrator = a.IsOrchestrator, SortOrder = a.SortOrder,
+        AllowedPluginKeysJson    = JsonSerializer.Serialize(a.AllowedPluginKeys    ?? []),
+        AllowedSkillIdsJson      = JsonSerializer.Serialize(a.AllowedSkillIds      ?? []),
+        AllowedMcpServerIdsJson  = JsonSerializer.Serialize(a.AllowedMcpServerIds  ?? []),
+        AllowedDatabaseKeysJson  = JsonSerializer.Serialize(a.AllowedDatabaseKeys  ?? []),
+        AllowedFlatFileIdsJson   = JsonSerializer.Serialize(a.AllowedFlatFileIds   ?? []),
+        AllowedRagDocumentIdsJson = JsonSerializer.Serialize(a.AllowedRagDocumentIds ?? []),
+        TenantId = tenantId
+    };
+    private static void ApplyAgentDefinition(AgentDefinitionEntity e, AgentDefinition a)
+    {
+        e.Name = a.Name; e.Icon = a.Icon; e.Description = a.Description;
+        e.SystemPrompt = a.SystemPrompt; e.ModelId = a.ModelId;
+        e.IsEnabled = a.IsEnabled; e.IsOrchestrator = a.IsOrchestrator; e.SortOrder = a.SortOrder;
+        e.AllowedPluginKeysJson    = JsonSerializer.Serialize(a.AllowedPluginKeys    ?? []);
+        e.AllowedSkillIdsJson      = JsonSerializer.Serialize(a.AllowedSkillIds      ?? []);
+        e.AllowedMcpServerIdsJson  = JsonSerializer.Serialize(a.AllowedMcpServerIds  ?? []);
+        e.AllowedDatabaseKeysJson  = JsonSerializer.Serialize(a.AllowedDatabaseKeys  ?? []);
+        e.AllowedFlatFileIdsJson   = JsonSerializer.Serialize(a.AllowedFlatFileIds   ?? []);
+        e.AllowedRagDocumentIdsJson = JsonSerializer.Serialize(a.AllowedRagDocumentIds ?? []);
+    }
+    private static AgentDefinition FromEntity(AgentDefinitionEntity e) => new()
+    {
+        Id = e.Id, Name = e.Name, Icon = e.Icon, Description = e.Description,
+        SystemPrompt = e.SystemPrompt, ModelId = e.ModelId,
+        IsEnabled = e.IsEnabled, IsOrchestrator = e.IsOrchestrator, SortOrder = e.SortOrder,
+        AllowedPluginKeys    = DeserializeList(e.AllowedPluginKeysJson),
+        AllowedSkillIds      = DeserializeList(e.AllowedSkillIdsJson),
+        AllowedMcpServerIds  = DeserializeList(e.AllowedMcpServerIdsJson),
+        AllowedDatabaseKeys  = DeserializeList(e.AllowedDatabaseKeysJson),
+        AllowedFlatFileIds   = DeserializeList(e.AllowedFlatFileIdsJson),
+        AllowedRagDocumentIds = DeserializeList(e.AllowedRagDocumentIdsJson),
     };
 
     private static List<string> DeserializeList(string? json)

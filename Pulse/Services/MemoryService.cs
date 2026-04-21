@@ -89,14 +89,25 @@ public sealed class MemoryService(
         return KeywordSearch(all, query);
     }
 
+    /// <summary>
+    /// Returns up to 20 active memories for injection into an agent's context.
+    /// When <paramref name="agentDefinitionId"/> is non-null, only memories scoped
+    /// to that agent are returned; when null, only global memories are returned.
+    /// </summary>
     public async Task<List<AgentMemory>> GetSessionContextAsync(
-        string userId, CancellationToken ct = default)
+        string userId, string? agentDefinitionId, CancellationToken ct = default)
         => await db.AgentMemories
-               .Where(m => m.UserId == userId && m.IsActive)
+               .Where(m => m.UserId == userId && m.IsActive &&
+                           m.AgentDefinitionId == agentDefinitionId)
                .OrderByDescending(m => m.Importance)
                .ThenByDescending(m => m.UpdatedAt)
                .Take(20)
                .ToListAsync(ct);
+
+    /// <summary>Convenience overload — returns global (orchestrator-level) memories.</summary>
+    public Task<List<AgentMemory>> GetSessionContextAsync(
+        string userId, CancellationToken ct = default)
+        => GetSessionContextAsync(userId, agentDefinitionId: null, ct);
 
     // â”€â”€ Write â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -165,8 +176,15 @@ public sealed class MemoryService(
 
     // â”€â”€ Auto-extraction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+    /// <summary>
+    /// Extracts memorable facts from one agent exchange and persists them.
+    /// Pass <paramref name="agentDefinitionId"/> to scope the memories to a specific
+    /// specialist; pass <c>null</c> for global (orchestrator) memories.
+    /// Deduplication runs within the same <c>(userId, agentDefinitionId)</c> scope.
+    /// </summary>
     public async Task ExtractFromExchangeAsync(
         string userId, string userMessage, string assistantResponse,
+        string? agentDefinitionId = null,
         CancellationToken ct = default)
     {
         var settings = await llmSettings.GetAsync(tenantContext.TenantId ?? Guid.Empty);
@@ -218,8 +236,11 @@ public sealed class MemoryService(
             if (s < 0 || e <= s) return;
 
             var facts    = JsonSerializer.Deserialize<string[]>(text[s..(e + 1)]) ?? [];
+            // Dedup within the same (userId, agentDefinitionId) scope only —
+            // a fact known to DataAnalyst doesn't block an identical global fact.
             var existing = await db.AgentMemories
-                .Where(m => m.UserId == userId && m.IsActive)
+                .Where(m => m.UserId == userId && m.IsActive &&
+                            m.AgentDefinitionId == agentDefinitionId)
                 .Select(m => new { m.Content, m.EmbeddingJson })
                 .ToListAsync(ct);
 
@@ -242,7 +263,14 @@ public sealed class MemoryService(
                 }
 
                 db.AgentMemories.Add(new AgentMemory
-                { UserId = userId, Content = trimmed, Source = "auto", Importance = 3, Embedding = vec });
+                {
+                    UserId            = userId,
+                    Content           = trimmed,
+                    Source            = "auto",
+                    Importance        = 3,
+                    Embedding         = vec,
+                    AgentDefinitionId = agentDefinitionId,
+                });
                 saved++;
             }
 

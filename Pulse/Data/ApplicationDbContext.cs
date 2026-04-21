@@ -35,6 +35,7 @@ namespace Pulse.Data
 		public DbSet<RagDocumentEntity>        RagDocuments         => Set<RagDocumentEntity>();
 		public DbSet<FlatFileSourceEntity>     FlatFileSources      => Set<FlatFileSourceEntity>();
 		public DbSet<DatabaseConnectionEntity> DatabaseConnections  => Set<DatabaseConnectionEntity>();
+		public DbSet<AgentDefinitionEntity>    AgentDefinitions     => Set<AgentDefinitionEntity>();
 
 		// ── Multi-tenancy ─────────────────────────────────────────────────────────
 		public DbSet<Tenant>                   Tenants              => Set<Tenant>();
@@ -49,6 +50,8 @@ namespace Pulse.Data
 				e.HasIndex(m => m.TenantId);
 				e.HasIndex(m => m.UserId);
 				e.HasIndex(m => new { m.UserId, m.IsActive });
+				e.HasIndex(m => new { m.UserId, m.AgentDefinitionId, m.IsActive });
+				e.Property(m => m.AgentDefinitionId).HasMaxLength(64);
 				e.Property(m => m.EmbeddingJson).HasColumnType("nvarchar(max)");
 			});
 
@@ -176,6 +179,30 @@ namespace Pulse.Data
 				e.Property(d => d.AllowedSchemasJson).HasColumnType("nvarchar(max)");
 			});
 
+			builder.Entity<AgentDefinitionEntity>(e =>
+			{
+				e.HasIndex(a => a.TenantId);
+				e.Property(a => a.Id).HasMaxLength(64);
+				e.Property(a => a.Name).HasMaxLength(200);
+				e.Property(a => a.Icon).HasMaxLength(16);
+				e.Property(a => a.Description).HasMaxLength(1000);
+				e.Property(a => a.ModelId).HasMaxLength(200);
+				e.Property(a => a.SystemPrompt).HasColumnType("nvarchar(max)");
+				e.Property(a => a.AllowedPluginKeysJson).HasColumnType("nvarchar(max)");
+				e.Property(a => a.AllowedSkillIdsJson).HasColumnType("nvarchar(max)");
+				e.Property(a => a.AllowedMcpServerIdsJson).HasColumnType("nvarchar(max)");
+				e.Property(a => a.AllowedDatabaseKeysJson).HasColumnType("nvarchar(max)");
+				e.Property(a => a.AllowedFlatFileIdsJson).HasColumnType("nvarchar(max)");
+				e.Property(a => a.AllowedRagDocumentIdsJson).HasColumnType("nvarchar(max)");
+
+				// At most one orchestrator per tenant. Filtered unique index is a
+				// SQL Server feature — it only indexes rows where IsOrchestrator = 1,
+				// so non-orchestrator rows don't collide.
+				e.HasIndex(a => new { a.TenantId, a.IsOrchestrator })
+				 .IsUnique()
+				 .HasFilter("[IsOrchestrator] = 1");
+			});
+
 			builder.Entity<WorkflowDefinition>(e =>
 			{
 				e.HasIndex(w => w.TenantId);
@@ -247,6 +274,11 @@ namespace Pulse.Data
 								   || e.TenantId == _tenantContext.TenantId);
 
 			builder.Entity<DatabaseConnectionEntity>()
+				.HasQueryFilter(e => _tenantContext == null
+								   || _tenantContext.TenantId == null
+								   || e.TenantId == _tenantContext.TenantId);
+
+			builder.Entity<AgentDefinitionEntity>()
 				.HasQueryFilter(e => _tenantContext == null
 								   || _tenantContext.TenantId == null
 								   || e.TenantId == _tenantContext.TenantId);

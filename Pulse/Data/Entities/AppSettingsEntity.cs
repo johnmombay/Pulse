@@ -14,7 +14,13 @@ public class AppSettingsEntity : ITenantOwned
     public Guid TenantId { get; set; }
 
     public string AppName { get; set; } = "Pulse";
-    public string ModelId { get; set; } = "gemini-2.0-flash";
+    public string ModelId { get; set; } = "";
+
+    /// <summary>
+    /// Google Gemini API version: "V1Beta" (default) or "V1". Some preview/3.x models
+    /// are only served on one version — switch here without code changes.
+    /// </summary>
+    public string ApiVersion { get; set; } = "V1Beta";
 
     public string? LogoFileName { get; set; }
     public string? LogoVersion  { get; set; }

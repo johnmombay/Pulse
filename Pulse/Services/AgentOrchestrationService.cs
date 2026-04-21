@@ -14,12 +14,19 @@ namespace Pulse.Services;
 /// Core agent orchestration: reads live settings from LlmSettingsService, loads
 /// enabled MCP servers as Semantic Kernel plugins, then streams the Gemini response
 /// back to connected clients via SignalR.
+///
+/// When <see cref="LlmSettingsModel.AgentDefinitions"/> is non-empty the orchestrator
+/// runs in <b>multi-agent mode</b>: it loads only its own <c>AllowedPluginKeys</c> and
+/// gains one <c>DelegateTo{Name}</c> kernel function per enabled specialist.
+/// When the table is empty (fresh install before seeding) it falls back to the legacy
+/// all-plugins-loaded monolithic behaviour.
 /// </summary>
 public sealed class AgentOrchestrationService(
     GeminiKeyRotationService keyRotation,
     ChatHistoryService chatHistory,
     LlmSettingsService llmSettings,
     ITenantContext tenantContext,
+    SpecializedAgentRunner specializedRunner,
     McpService mcpService,
     RagService ragService,
     MemoryService memoryService,
@@ -33,6 +40,95 @@ public sealed class AgentOrchestrationService(
     IHubContext<AgentHub> hubContext,
     ILogger<AgentOrchestrationService> logger)
 {
+    private static GoogleAIVersion ParseApiVersion(string? value) =>
+        string.Equals(value, "V1", StringComparison.OrdinalIgnoreCase)
+            ? GoogleAIVersion.V1
+            : GoogleAIVersion.V1_Beta;
+
+    /// <summary>
+    /// Pulls Gemini's <c>error.message</c> out of the JSON response body when present
+    /// (Google's payload looks like <c>{"error":{"code":400,"message":"...","status":"..."}}</c>).
+    /// Falls back to the raw body, then to the exception message.
+    /// </summary>
+    private static string ExtractGeminiError(HttpOperationException ex)
+    {
+        var body = ex.ResponseContent;
+        if (string.IsNullOrWhiteSpace(body)) return ex.Message;
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var err))
+            {
+                var msg = err.TryGetProperty("message", out var m) ? m.GetString() : null;
+                var status = err.TryGetProperty("status", out var s) ? s.GetString() : null;
+                if (!string.IsNullOrWhiteSpace(msg))
+                    return string.IsNullOrWhiteSpace(status) ? msg! : $"{msg} ({status})";
+            }
+        }
+        catch (System.Text.Json.JsonException) { /* fall through */ }
+
+        return body.Length > 500 ? body[..500] + "…" : body;
+    }
+
+    private static string BuildUserFacingError(Exception ex, string modelId)
+    {
+        if (ex is InvalidOperationException ioe) return ioe.Message;
+
+        if (ex is HttpOperationException hoe)
+        {
+            var detail = ExtractGeminiError(hoe);
+            var prefix = hoe.StatusCode switch
+            {
+                System.Net.HttpStatusCode.BadRequest =>
+                    $"Gemini rejected the request (400) for model '{modelId}'. " +
+                    "Most common cause: the model name is not valid for the selected API version " +
+                    "(try toggling Settings \u2192 LLM \u2192 Gemini API Version between v1 and v1beta).",
+                System.Net.HttpStatusCode.Unauthorized =>
+                    "Gemini rejected the API key (401). Verify the key in Settings \u2192 LLM.",
+                System.Net.HttpStatusCode.Forbidden =>
+                    $"Gemini denied the request (403) for model '{modelId}'. " +
+                    "Either the model is not enabled for your API key's Google project (common for *-preview models), " +
+                    "or the key has no access to this model.",
+                System.Net.HttpStatusCode.NotFound =>
+                    $"Gemini does not recognize model '{modelId}' (404). " +
+                    "Check the spelling in Settings \u2192 LLM \u2192 Model ID, or switch the API Version.",
+                System.Net.HttpStatusCode.TooManyRequests =>
+                    "All Gemini API keys are currently rate-limited. Try again in a minute, or add more keys in Settings \u2192 LLM.",
+                _ => $"Gemini returned HTTP {(int?)hoe.StatusCode}."
+            };
+
+            return $"{prefix} Details from Google: {detail}";
+        }
+
+        return ex.Message;
+    }
+
+    /// <summary>
+    /// Best-effort parse of Gemini's <c>retryDelay</c> hint
+    /// the JSON error payload surfaced on <see cref="HttpOperationException.ResponseContent"/>.
+    /// Capped at 5 minutes to avoid pathological waits.
+    /// </summary>
+    private static TimeSpan? TryParseRetryAfter(HttpOperationException ex)
+    {
+        var body = ex.ResponseContent;
+        if (string.IsNullOrEmpty(body)) return null;
+
+        const string marker = "\"retryDelay\":\"";
+        var i = body.IndexOf(marker, StringComparison.Ordinal);
+        if (i < 0) return null;
+
+        i += marker.Length;
+        var j = body.IndexOf('"', i);
+        if (j < 0) return null;
+
+        var token = body[i..j]; // e.g. "42s"
+        if (token.EndsWith('s') && double.TryParse(token[..^1], out var secs))
+            return TimeSpan.FromSeconds(Math.Min(Math.Max(secs, 1), 300));
+
+        return null;
+    }
+
     /// <summary>
     /// Executes one user-message turn and returns the full assistant response text
     /// (used by the caller to queue a memory-extraction job).
@@ -47,6 +143,7 @@ public sealed class AgentOrchestrationService(
         await sessionLock.WaitAsync(cancellationToken);
 
         McpClient[] mcpClients = [];
+        string modelId = "";
         try
         {
             var skHistory = chatHistory.GetSkHistory(sessionId);
@@ -55,17 +152,34 @@ public sealed class AgentOrchestrationService(
                 .SendAsync("AgentStatus", "thinking", cancellationToken: cancellationToken);
             chatHistory.SetSessionStatus(sessionId, "thinking");
 
-            // Read live settings — picks up any changes saved on the Settings page
-            var settings = await llmSettings.GetAsync(tenantContext.TenantId ?? Guid.Empty);
+            var tenantId = tenantContext.TenantId ?? Guid.Empty;
+            var settings = await llmSettings.GetAsync(tenantId);
 
-            // On the first user message of a new session, inject persistent memories
-            // and active skill instructions as system messages.
+            // ── Agent system determination ────────────────────────────────────
+            var agentDefs        = settings.AgentDefinitions ?? [];
+            var orchestratorDef  = agentDefs.FirstOrDefault(a => a.IsOrchestrator && a.IsEnabled);
+            var enabledSpecialists = agentDefs.Where(a => a.IsEnabled && !a.IsOrchestrator).ToList();
+            var useAgentSystem   = agentDefs.Count > 0;
+
+            // Model ID: always use the global LLM Configuration value. Per-agent ModelId
+            // overrides on the Orchestrator definition are intentionally ignored so the
+            // Settings → LLM → Model ID field is the single source of truth.
+            modelId = settings.ModelId;
+
+            // ── First-turn setup ──────────────────────────────────────────────
             if (skHistory.Count == 1)
             {
-                // ── Persistent memory ────────────────────────────────────────
+                // Set orchestrator system prompt when the agent system is active
+                if (useAgentSystem && orchestratorDef is not null)
+                {
+                    chatHistory.SetSessionSystemPrompt(sessionId,
+                        BuildOrchestratorPrompt(orchestratorDef, enabledSpecialists));
+                }
+
+                // ── Persistent memory (global / orchestrator scope) ───────────
                 if (!string.IsNullOrWhiteSpace(userId))
                 {
-                    var memories = await memoryService.GetSessionContextAsync(userId, cancellationToken);
+                    var memories = await memoryService.GetSessionContextAsync(userId, null, cancellationToken);
                     if (memories.Count > 0)
                     {
                         var memLines = string.Join("\n", memories.Select(m => $"- {m.Content}"));
@@ -74,7 +188,7 @@ public sealed class AgentOrchestrationService(
                             $"(use these to personalise responses):\n{memLines}");
 
                         logger.LogInformation(
-                            "Session {SessionId}: injected {N} memory item(s) for user {UserId}",
+                            "Session {SessionId}: injected {N} global memory item(s) for user {UserId}",
                             sessionId, memories.Count, userId);
                     }
                 }
@@ -102,7 +216,7 @@ public sealed class AgentOrchestrationService(
 
             if (enabledRag.Count > 0)
             {
-                var chunks = await ragService.RetrieveAsync(userMessage, tenantContext.TenantId ?? Guid.Empty, cancellationToken);
+                var chunks = await ragService.RetrieveAsync(userMessage, tenantId, cancellationToken);
                 if (chunks.Count > 0)
                 {
                     var ctx = string.Join("\n\n---\n\n", chunks);
@@ -121,108 +235,124 @@ public sealed class AgentOrchestrationService(
 
             skHistory.AddUserMessage(messageToSend);
             chatHistory.AddDisplayMessage(sessionId, userId, "user", userMessage);
-            await keyRotation.EnforceRateLimitAsync(cancellationToken);
-            var apiKey = keyRotation.GetNextKey(settings.ApiKeys);
-
-            var kernelBuilder = Kernel.CreateBuilder()
-                .AddGoogleAIGeminiChatCompletion(settings.ModelId, apiKey);
-
-            var kernel = kernelBuilder.Build();
-
-            // Load enabled MCP server tools into the kernel
-            var enabledMcp = settings.McpServers.Where(s => s.IsEnabled).ToList();
-            if (enabledMcp.Count > 0)
-            {
-                var (mcpPlugins, clients) = await mcpService.CreatePluginsAsync(
-                    enabledMcp, cancellationToken);
-                mcpClients = clients;
-
-                foreach (var plugin in mcpPlugins)
-                    kernel.Plugins.Add(plugin);
-
-                logger.LogInformation(
-                    "Session {SessionId}: loaded {Count} MCP plugin(s)", sessionId, mcpPlugins.Length);
-            }
-
-            // Load in-process database tools when connections are configured
-            var dbConnections = settings.DatabaseConnections ?? [];
-            var enabledDbConns = dbConnections.Where(kvp => kvp.Value.IsEnabled).ToList();
-            if (enabledDbConns.Count > 0)
-            {
-                kernel.Plugins.AddFromObject(databaseToolsPlugin, "Database");
-                logger.LogInformation(
-                    "Session {SessionId}: loaded DatabaseTools plugin ({Count} connection(s): {Names})",
-                    sessionId, enabledDbConns.Count, string.Join(", ", enabledDbConns.Select(c => c.Key)));
-            }
-
-            // PDF, Word, Excel generators are always available
-            kernel.Plugins.AddFromObject(pdfGeneratorPlugin,   "PdfGenerator");
-            kernel.Plugins.AddFromObject(wordGeneratorPlugin,  "WordGenerator");
-            kernel.Plugins.AddFromObject(excelGeneratorPlugin, "ExcelGenerator");
-
-            // Terminal plugin — only loaded when explicitly enabled in Settings
-            if (settings.TerminalSettings?.IsEnabled == true)
-            {
-                kernel.Plugins.AddFromObject(terminalPlugin, "Terminal");
-                logger.LogInformation("Session {SessionId}: Terminal plugin loaded (shell={Shell})",
-                    sessionId, settings.TerminalSettings.DefaultShell);
-            }
-
-            // AgentMail plugin — only loaded when enabled in Settings
-            if (settings.AgentMail?.IsEnabled == true &&
-                !string.IsNullOrWhiteSpace(settings.AgentMail.ApiKey))
-            {
-                kernel.Plugins.AddFromObject(agentMailPlugin, "AgentMail");
-                logger.LogInformation("Session {SessionId}: AgentMail plugin loaded (inbox={Inbox})",
-                    sessionId, settings.AgentMail.DefaultInbox);
-            }
-
-            // Flat-file data sources — loaded whenever at least one is enabled
-            var enabledFlatFiles = (settings.FlatFileSources ?? []).Where(s => s.IsEnabled).ToList();
-            if (enabledFlatFiles.Count > 0)
-            {
-                kernel.Plugins.AddFromObject(flatFileDataPlugin, "FlatFileData");
-                logger.LogInformation(
-                    "Session {SessionId}: FlatFileData plugin loaded ({Count} source(s): {Names})",
-                    sessionId, enabledFlatFiles.Count,
-                    string.Join(", ", enabledFlatFiles.Select(s => s.Id)));
-            }
-
-            // Chart generator is created per-execution so it has access to sessionId + hub
-            var chartPlugin = new ChartGeneratorPlugin(sessionId, userId, hubContext, chatHistory, logger);
-            kernel.Plugins.AddFromObject(chartPlugin, "ChartGenerator");
-
-            var chatService = kernel.GetRequiredService<IChatCompletionService>();
-
-            // Enable auto-invocation of MCP tools when plugins are present
-            var executionSettings = new GeminiPromptExecutionSettings
-            {
-                MaxTokens = 8192,
-                Temperature = 0.7,
-                ToolCallBehavior = kernel.Plugins.Count > 0
-                    ? GeminiToolCallBehavior.AutoInvokeKernelFunctions
-                    : null
-            };
 
             await hubContext.Clients.Group(sessionId)
                 .SendAsync("AgentStatus", "responding", cancellationToken: cancellationToken);
             chatHistory.SetSessionStatus(sessionId, "responding");
 
             var responseBuilder = new StringBuilder();
+            const int maxAttempts = 3;
+            Exception? lastError = null;
 
-            await foreach (var chunk in chatService.GetStreamingChatMessageContentsAsync(
-                skHistory,
-                executionSettings: executionSettings,
-                kernel: kernel,
-                cancellationToken: cancellationToken))
+            for (var attempt = 1; attempt <= maxAttempts; attempt++)
             {
-                if (!string.IsNullOrEmpty(chunk.Content))
+                // Dispose any MCP clients from a previous failed attempt before rebuilding.
+                foreach (var c in mcpClients) await c.DisposeAsync();
+                mcpClients = [];
+
+                await keyRotation.EnforceRateLimitAsync(cancellationToken);
+                var apiKey = keyRotation.GetNextKey(settings.ApiKeys);
+
+                var kernelBuilder = Kernel.CreateBuilder()
+                    .AddGoogleAIGeminiChatCompletion(modelId, apiKey, apiVersion: ParseApiVersion(settings.ApiVersion));
+                var kernel = kernelBuilder.Build();
+
+                // ── Plugin loading ────────────────────────────────────────────
+                if (!useAgentSystem)
                 {
-                    responseBuilder.Append(chunk.Content);
-                    await hubContext.Clients.Group(sessionId)
-                        .SendAsync("ReceiveChunk", chunk.Content, cancellationToken: cancellationToken);
+                    // Legacy path: all plugins loaded (backwards compat for empty AgentDefinitions)
+                    mcpClients = await LoadAllPluginsAsync(kernel, settings, sessionId, userId, cancellationToken);
+                }
+                else
+                {
+                    // Orchestrator path: only load plugins listed in orchestrator's AllowedPluginKeys
+                    var allowedKeys = orchestratorDef?.AllowedPluginKeys ?? [];
+                    mcpClients = await LoadScopedPluginsAsync(kernel, settings, allowedKeys, sessionId, userId,
+                        cancellationToken);
+
+                    // Delegation plugin: one DelegateTo{Name} function per specialist
+                    if (enabledSpecialists.Count > 0)
+                    {
+                        var delegationPlugin = AgentDelegationPlugin.Build(
+                            enabledSpecialists, specializedRunner, userId, sessionId);
+                        kernel.Plugins.Add(delegationPlugin);
+                        if (attempt == 1)
+                        {
+                            logger.LogInformation(
+                                "Session {SessionId}: delegation plugin loaded ({Count} specialist(s): {Names})",
+                                sessionId, enabledSpecialists.Count,
+                                string.Join(", ", enabledSpecialists.Select(s => s.Name)));
+                        }
+                    }
+                }
+
+                var chatService = kernel.GetRequiredService<IChatCompletionService>();
+
+                var executionSettings = new GeminiPromptExecutionSettings
+                {
+                    MaxTokens = 8192,
+                    Temperature = 0.7,
+                    ToolCallBehavior = kernel.Plugins.Count > 0
+                        ? GeminiToolCallBehavior.AutoInvokeKernelFunctions
+                        : null
+                };
+
+                responseBuilder.Clear();
+                var streamedAnything = false;
+
+                try
+                {
+                    await foreach (var chunk in chatService.GetStreamingChatMessageContentsAsync(
+                        skHistory,
+                        executionSettings: executionSettings,
+                        kernel: kernel,
+                        cancellationToken: cancellationToken))
+                    {
+                        if (!string.IsNullOrEmpty(chunk.Content))
+                        {
+                            streamedAnything = true;
+                            responseBuilder.Append(chunk.Content);
+                            await hubContext.Clients.Group(sessionId)
+                                .SendAsync("ReceiveChunk", chunk.Content, cancellationToken: cancellationToken);
+                        }
+                    }
+
+                    lastError = null;
+                    break; // success
+                }
+                catch (HttpOperationException ex) when (
+                    ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests &&
+                    !streamedAnything &&
+                    attempt < maxAttempts)
+                {
+                    // Park this key. Default 60s cooldown; honor Gemini's retryDelay hint when present.
+                    var cooldown = TryParseRetryAfter(ex) ?? TimeSpan.FromSeconds(60);
+                    keyRotation.MarkRateLimited(apiKey, cooldown);
+
+                    var backoff = TimeSpan.FromMilliseconds(500 * Math.Pow(2, attempt - 1));
+                    logger.LogWarning(
+                        "Session {SessionId}: Gemini 429 on attempt {Attempt}/{Max}. " +
+                        "Cooling down key for {Cooldown}s and retrying after {Backoff}ms.",
+                        sessionId, attempt, maxAttempts, cooldown.TotalSeconds, backoff.TotalMilliseconds);
+
+                    await Task.Delay(backoff, cancellationToken);
+                    lastError = ex;
+                }
+                catch (HttpOperationException ex) when (
+                    ex.StatusCode == System.Net.HttpStatusCode.NotFound &&
+                    !streamedAnything)
+                {
+                    // 404 = model unknown to the Gemini API (or unavailable to this key's project).
+                    // This is not retryable — bail with an actionable message.
+                    throw new InvalidOperationException(
+                        $"Gemini returned 404 for model '{modelId}'. The model name is invalid, deprecated, " +
+                        $"or not available to your API key. Open Settings \u2192 LLM and pick a supported " +
+                        $"model (e.g. 'gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro').", ex);
                 }
             }
+
+            if (lastError is not null)
+                throw lastError;
 
             var fullResponse = responseBuilder.ToString();
 
@@ -239,29 +369,186 @@ public sealed class AgentOrchestrationService(
 
             logger.LogInformation(
                 "Agent task completed for session {SessionId}. Model={Model} MCP={McpCount} AwaitingInput={AwaitingInput}",
-                sessionId, settings.ModelId, mcpClients.Length, awaitingInput);
+                sessionId, modelId, mcpClients.Length, awaitingInput);
 
             return fullResponse;
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Agent execution failed for session {SessionId}", sessionId);
+
+            var userFacing = BuildUserFacingError(ex, modelId);
+
             await hubContext.Clients.Group(sessionId)
-                .SendAsync("TaskError", ex.Message, cancellationToken: cancellationToken);
+                .SendAsync("TaskError", userFacing, cancellationToken: cancellationToken);
             return "";
         }
         finally
         {
             chatHistory.ClearSessionStatus(sessionId);
 
-            // Dispose MCP client connections (closes SSE streams / kills stdio processes)
             foreach (var client in mcpClients)
                 await client.DisposeAsync();
 
-            // Guard against ObjectDisposedException: the session (and its SemaphoreSlim)
-            // can be deleted by RemoveSession() while the agent is still executing.
             try { sessionLock.Release(); }
-            catch (ObjectDisposedException) { /* session was deleted during execution */ }
+            catch (ObjectDisposedException) { /* session deleted during execution */ }
         }
     }
+
+    // ── Plugin loading helpers ────────────────────────────────────────────────
+
+    /// <summary>Legacy: loads every globally-enabled plugin (no agent gating).</summary>
+    private async Task<McpClient[]> LoadAllPluginsAsync(
+        Kernel kernel,
+        LlmSettingsModel settings,
+        string sessionId,
+        string userId,
+        CancellationToken ct)
+    {
+        McpClient[] mcpClients = [];
+        var enabledMcp = settings.McpServers.Where(s => s.IsEnabled).ToList();
+        if (enabledMcp.Count > 0)
+        {
+            var (mcpPlugins, clients) = await mcpService.CreatePluginsAsync(enabledMcp, ct);
+            mcpClients = clients;
+            foreach (var plugin in mcpPlugins) kernel.Plugins.Add(plugin);
+            logger.LogInformation("Session {SessionId}: loaded {Count} MCP plugin(s)", sessionId, mcpPlugins.Length);
+        }
+
+        var enabledDbConns = (settings.DatabaseConnections ?? []).Where(kvp => kvp.Value.IsEnabled).ToList();
+        if (enabledDbConns.Count > 0)
+        {
+            kernel.Plugins.AddFromObject(databaseToolsPlugin, "Database");
+            logger.LogInformation("Session {SessionId}: loaded DatabaseTools plugin ({Count} connection(s))",
+                sessionId, enabledDbConns.Count);
+        }
+
+        kernel.Plugins.AddFromObject(pdfGeneratorPlugin,   "PdfGenerator");
+        kernel.Plugins.AddFromObject(wordGeneratorPlugin,  "WordGenerator");
+        kernel.Plugins.AddFromObject(excelGeneratorPlugin, "ExcelGenerator");
+
+        if (settings.TerminalSettings?.IsEnabled == true)
+        {
+            kernel.Plugins.AddFromObject(terminalPlugin, "Terminal");
+            logger.LogInformation("Session {SessionId}: Terminal plugin loaded (shell={Shell})",
+                sessionId, settings.TerminalSettings.DefaultShell);
+        }
+
+        if (settings.AgentMail?.IsEnabled == true && !string.IsNullOrWhiteSpace(settings.AgentMail.ApiKey))
+        {
+            kernel.Plugins.AddFromObject(agentMailPlugin, "AgentMail");
+            logger.LogInformation("Session {SessionId}: AgentMail plugin loaded", sessionId);
+        }
+
+        var enabledFlatFiles = (settings.FlatFileSources ?? []).Where(s => s.IsEnabled).ToList();
+        if (enabledFlatFiles.Count > 0)
+        {
+            kernel.Plugins.AddFromObject(flatFileDataPlugin, "FlatFileData");
+            logger.LogInformation("Session {SessionId}: FlatFileData plugin loaded ({Count} source(s))",
+                sessionId, enabledFlatFiles.Count);
+        }
+
+        var chartPlugin = new ChartGeneratorPlugin(sessionId, userId, hubContext, chatHistory, logger);
+        kernel.Plugins.AddFromObject(chartPlugin, "ChartGenerator");
+        return mcpClients;
+    }
+
+    /// <summary>Orchestrator path: loads only plugins listed in <paramref name="allowedKeys"/>.</summary>
+    private async Task<McpClient[]> LoadScopedPluginsAsync(
+        Kernel kernel,
+        LlmSettingsModel settings,
+        IReadOnlyList<string> allowedKeys,
+        string sessionId,
+        string userId,
+        CancellationToken ct)
+    {
+        McpClient[] mcpClients = [];
+        if (allowedKeys.Contains(AgentDefinition.PluginKeys.Mcp))
+        {
+            var enabledMcp = settings.McpServers.Where(s => s.IsEnabled).ToList();
+            if (enabledMcp.Count > 0)
+            {
+                var (mcpPlugins, clients) = await mcpService.CreatePluginsAsync(enabledMcp, ct);
+                mcpClients = clients;
+                foreach (var plugin in mcpPlugins) kernel.Plugins.Add(plugin);
+                logger.LogInformation("Session {SessionId}: orchestrator loaded {Count} MCP plugin(s)", sessionId, mcpPlugins.Length);
+            }
+        }
+
+        if (allowedKeys.Contains(AgentDefinition.PluginKeys.Database))
+        {
+            var enabledDbConns = (settings.DatabaseConnections ?? []).Where(kvp => kvp.Value.IsEnabled).ToList();
+            if (enabledDbConns.Count > 0)
+            {
+                kernel.Plugins.AddFromObject(databaseToolsPlugin, "Database");
+                logger.LogInformation("Session {SessionId}: orchestrator loaded Database plugin", sessionId);
+            }
+        }
+
+        if (allowedKeys.Contains(AgentDefinition.PluginKeys.Pdf))
+            kernel.Plugins.AddFromObject(pdfGeneratorPlugin, "PdfGenerator");
+
+        if (allowedKeys.Contains(AgentDefinition.PluginKeys.Word))
+            kernel.Plugins.AddFromObject(wordGeneratorPlugin, "WordGenerator");
+
+        if (allowedKeys.Contains(AgentDefinition.PluginKeys.Excel))
+            kernel.Plugins.AddFromObject(excelGeneratorPlugin, "ExcelGenerator");
+
+        if (allowedKeys.Contains(AgentDefinition.PluginKeys.Terminal) &&
+            settings.TerminalSettings?.IsEnabled == true)
+        {
+            kernel.Plugins.AddFromObject(terminalPlugin, "Terminal");
+            logger.LogInformation("Session {SessionId}: orchestrator loaded Terminal plugin", sessionId);
+        }
+
+        if (allowedKeys.Contains(AgentDefinition.PluginKeys.AgentMail) &&
+            settings.AgentMail?.IsEnabled == true &&
+            !string.IsNullOrWhiteSpace(settings.AgentMail.ApiKey))
+        {
+            kernel.Plugins.AddFromObject(agentMailPlugin, "AgentMail");
+            logger.LogInformation("Session {SessionId}: orchestrator loaded AgentMail plugin", sessionId);
+        }
+
+        if (allowedKeys.Contains(AgentDefinition.PluginKeys.FlatFileData))
+        {
+            var enabledFlatFiles = (settings.FlatFileSources ?? []).Where(s => s.IsEnabled).ToList();
+            if (enabledFlatFiles.Count > 0)
+            {
+                kernel.Plugins.AddFromObject(flatFileDataPlugin, "FlatFileData");
+                logger.LogInformation("Session {SessionId}: orchestrator loaded FlatFileData plugin", sessionId);
+            }
+        }
+
+        if (allowedKeys.Contains(AgentDefinition.PluginKeys.Chart))
+        {
+            var chartPlugin = new ChartGeneratorPlugin(sessionId, userId, hubContext, chatHistory, logger);
+            kernel.Plugins.AddFromObject(chartPlugin, "ChartGenerator");
+        }
+
+        return mcpClients;
+    }
+
+    // ── System-prompt builder ─────────────────────────────────────────────────
+
+    private static string BuildOrchestratorPrompt(
+        AgentDefinition orchestrator,
+        IReadOnlyList<AgentDefinition> specialists)
+    {
+        var sb = new StringBuilder(orchestrator.SystemPrompt);
+
+        if (specialists.Count > 0)
+        {
+            sb.AppendLine("\n\nAvailable specialist agents you can delegate to:");
+            foreach (var s in specialists)
+                sb.AppendLine($"- DelegateTo{SanitizeName(s.Name)}: {s.Description}");
+            sb.AppendLine(
+                "\nWhen delegating, pass a complete, self-contained task description — " +
+                "the specialist has no memory of the current conversation.");
+        }
+
+        return sb.ToString();
+    }
+
+    private static string SanitizeName(string name) =>
+        System.Text.RegularExpressions.Regex.Replace(name.Trim(), @"[^a-zA-Z0-9]", "");
 }

@@ -363,6 +363,11 @@ const Chat = (() => {
     let isFirstMessage         = true;
     let streamingCharts        = [];   // chart specs pushed via SignalR during current response
 
+    // ── Sub-agent nested bubbles ──────────────────────────────────────
+    let subAgentBubbles          = new Map();  // agentName → <details> element
+    let subAgentContents         = new Map();  // agentName → accumulated raw text
+    let currentSubAgentsContainer = null;
+
     let messagesEl, inputEl, sendBtn, statusBadge, typingEl;
 
     // ── Init ──────────────────────────────────────────────────────────
@@ -671,7 +676,32 @@ const Chat = (() => {
             .configureLogging(signalR.LogLevel.Warning)
             .build();
 
-        connection.on('AgentStatus', status => setStatus(status));
+        connection.on('AgentStatus', status => {
+            if (status.startsWith('delegating:')) {
+                // Pre-ensure the assistant bubble exists so the card has a home
+                if (!currentAssistantBubble) createAssistantBubble();
+                setStatus('delegating');
+            } else if (status.startsWith('delegating-complete:')) {
+                const agentName = status.slice('delegating-complete:'.length);
+                const card = subAgentBubbles.get(agentName);
+                if (card) {
+                    card.querySelector('.sub-agent-spinner')?.remove();
+                    card.removeAttribute('open');  // collapse by default; user can re-open
+                }
+            } else {
+                setStatus(status);
+            }
+        });
+
+        connection.on('SubAgentChunk', ({ agentName, icon, content }) => {
+            hideTyping();
+            if (!currentAssistantBubble) createAssistantBubble();
+            const card        = getOrCreateSubAgentCard(agentName, icon);
+            const accumulated = (subAgentContents.get(agentName) || '') + content;
+            subAgentContents.set(agentName, accumulated);
+            card.querySelector('.sub-agent-content').innerHTML = renderMarkdown(accumulated);
+            scrollToBottom();
+        });
 
         connection.on('ReceiveChunk', chunk => {
             hideTyping();
@@ -902,7 +932,10 @@ const Chat = (() => {
     }
 
     function createAssistantBubble() {
-        currentAssistantContent = '';
+        currentAssistantContent    = '';
+        subAgentBubbles            = new Map();
+        subAgentContents           = new Map();
+        currentSubAgentsContainer  = null;
         const wrapper = document.createElement('div');
         wrapper.className = 'msg assistant';
         wrapper.dataset.streaming = '1';
@@ -913,11 +946,33 @@ const Chat = (() => {
             `<path d="M19 16l.898 2.764L22 19.5l-2.102.736L19 23l-.898-2.764L16 19.5l2.102-.736L19 16z" fill="currentColor" opacity=".6"/>` +
             `</svg></div>` +
             `<div class="msg-body">` +
+              `<div class="sub-agents-container"></div>` +
               `<div class="msg-bubble"></div>` +
               `<div class="msg-time">${formatTime(new Date())}</div>` +
             `</div>`;
         messagesEl.appendChild(wrapper);
-        currentAssistantBubble = wrapper.querySelector('.msg-bubble');
+        currentAssistantBubble    = wrapper.querySelector('.msg-bubble');
+        currentSubAgentsContainer = wrapper.querySelector('.sub-agents-container');
+    }
+
+    function getOrCreateSubAgentCard(agentName, icon) {
+        if (subAgentBubbles.has(agentName)) return subAgentBubbles.get(agentName);
+
+        const card = document.createElement('details');
+        card.className = 'sub-agent-card';
+        card.setAttribute('open', '');
+        card.innerHTML =
+            `<summary class="sub-agent-summary">` +
+              `<span class="sub-agent-icon">${escapeHtml(icon)}</span>` +
+              `<span class="sub-agent-name">${escapeHtml(agentName)}</span>` +
+              `<span class="sub-agent-spinner">` +
+                `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>` +
+              `</span>` +
+            `</summary>` +
+            `<div class="sub-agent-content"></div>`;
+        currentSubAgentsContainer?.appendChild(card);
+        subAgentBubbles.set(agentName, card);
+        return card;
     }
 
     function finaliseAssistantBubble() {
@@ -943,8 +998,16 @@ const Chat = (() => {
             const added = FileStore.extractFromMarkdown(sessionId, currentAssistantContent);
             if (added > 0) renderFilesPane();
         }
-        currentAssistantBubble  = null;
-        currentAssistantContent = '';
+        // Finalize any sub-agent cards that didn't receive a delegating-complete event
+        subAgentBubbles.forEach(card => {
+            card.querySelector('.sub-agent-spinner')?.remove();
+            card.removeAttribute('open');
+        });
+        currentAssistantBubble    = null;
+        currentAssistantContent   = '';
+        subAgentBubbles           = new Map();
+        subAgentContents          = new Map();
+        currentSubAgentsContainer = null;
     }
 
     function appendChartToBubble(bubble, specJson) {
@@ -1009,6 +1072,7 @@ const Chat = (() => {
         statusBadge.textContent = {
             thinking:   'Thinking…',
             responding: 'Responding…',
+            delegating: 'Delegating…',
             idle:       '',
             error:      'Error',
         }[s] ?? s;
