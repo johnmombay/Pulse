@@ -1,0 +1,135 @@
+@page
+@using Pulse.Services
+@model Pulse.Pages.Admin.UsageModel
+@{
+    ViewData["Title"] = "Usage (All Tenants)";
+}
+
+<div class="container-xxl py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1">🛡️ Token Usage — All Tenants</h2>
+            <div class="text-muted small">
+                SuperAdmin view of Gemini consumption across every tenant, plus your own (SuperAdmin) calls.
+            </div>
+        </div>
+        <form method="get" class="d-flex gap-2 align-items-center">
+            <label class="form-label mb-0 small text-muted">Window</label>
+            <select name="months" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="1"  selected="@(Model.Months == 1)">This month</option>
+                <option value="3"  selected="@(Model.Months == 3)">Last 3 months</option>
+                <option value="6"  selected="@(Model.Months == 6)">Last 6 months</option>
+                <option value="12" selected="@(Model.Months == 12)">Last 12 months</option>
+            </select>
+        </form>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card shadow-sm h-100"><div class="card-body">
+                <div class="text-muted small">Grand total — all tenants</div>
+                <div class="h3 mb-0">@Model.GrandTotal.ToString("N0")</div>
+            </div></div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm h-100"><div class="card-body">
+                <div class="text-muted small">Tenants with usage</div>
+                <div class="h3 mb-0">@Model.ByTenant.Count(t => t.TotalTokens > 0)</div>
+            </div></div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm h-100"><div class="card-body">
+                <div class="text-muted small">Your (SuperAdmin) tokens</div>
+                <div class="h3 mb-0">@Model.SuperAdminTotal.ToString("N0")</div>
+            </div></div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm h-100"><div class="card-body">
+                <div class="text-muted small">Total calls</div>
+                <div class="h3 mb-0">@Model.TotalCalls.ToString("N0")</div>
+            </div></div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white"><strong>Last 12 months — grand total</strong></div>
+        <div class="card-body">
+            <canvas id="globalMonthly" height="90"></canvas>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-white"><strong>Per-tenant breakdown</strong> <span class="text-muted small">(window: @Model.WindowLabel)</span></div>
+        <div class="table-responsive">
+            <table class="table table-sm mb-0 align-middle">
+                <thead>
+                    <tr>
+                        <th>Tenant</th>
+                        <th class="text-end">Prompt</th>
+                        <th class="text-end">Completion</th>
+                        <th class="text-end">Total</th>
+                        <th class="text-end">Calls</th>
+                        <th class="text-end">Share</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var t in Model.ByTenant)
+                {
+                    var share = Model.GrandTotal > 0
+                        ? (double)t.TotalTokens / Model.GrandTotal
+                        : 0.0;
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">@t.TenantName</div>
+                            <div class="text-muted small"><code>@t.TenantId</code></div>
+                        </td>
+                        <td class="text-end">@t.PromptTokens.ToString("N0")</td>
+                        <td class="text-end">@t.CompletionTokens.ToString("N0")</td>
+                        <td class="text-end"><strong>@t.TotalTokens.ToString("N0")</strong></td>
+                        <td class="text-end">@t.Calls.ToString("N0")</td>
+                        <td class="text-end" style="min-width:160px;">
+                            <div class="d-flex align-items-center justify-content-end gap-2">
+                                <span class="small text-muted">@((share * 100).ToString("F1"))%</span>
+                                <div class="progress flex-grow-1" style="height:6px;max-width:120px;">
+                                    <div class="progress-bar" role="progressbar"
+                                         style="width:@(Math.Min(100, share * 100).ToString("F2", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                }
+                @if (Model.ByTenant.Count == 0)
+                {
+                    <tr><td colspan="6" class="text-center text-muted py-4">No usage recorded in this window.</td></tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@latest/dist/chart.umd.min.js"></script>
+    <script>
+        (function () {
+            const monthly = @Html.Raw(Model.MonthlySeriesJson);
+            const ctx = document.getElementById('globalMonthly');
+            if (!ctx || typeof Chart === 'undefined') return;
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: monthly.map(m => m.label),
+                    datasets: [
+                        { label: 'Prompt',     data: monthly.map(m => m.prompt),     backgroundColor: 'rgba(13,110,253,0.75)' },
+                        { label: 'Completion', data: monthly.map(m => m.completion), backgroundColor: 'rgba(25,135,84,0.75)' }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } },
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+        })();
+    </script>
+}

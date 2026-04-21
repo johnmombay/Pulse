@@ -1,0 +1,135 @@
+@page
+@using Pulse.Services
+@model Pulse.Pages.UsageModel
+@{
+    ViewData["Title"] = "Token Usage";
+}
+
+<div class="container-xxl py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1">🔢 Token Usage</h2>
+            <div class="text-muted small">
+                Live Gemini consumption for <strong>@Model.TenantDisplayName</strong>.
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card shadow-sm h-100"><div class="card-body">
+                <div class="text-muted small">This month — total tokens</div>
+                <div class="h3 mb-0">@Model.CurrentMonth.TotalTokens.ToString("N0")</div>
+            </div></div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm h-100"><div class="card-body">
+                <div class="text-muted small">This month — prompt</div>
+                <div class="h3 mb-0">@Model.CurrentMonth.PromptTokens.ToString("N0")</div>
+            </div></div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm h-100"><div class="card-body">
+                <div class="text-muted small">This month — completion</div>
+                <div class="h3 mb-0">@Model.CurrentMonth.CompletionTokens.ToString("N0")</div>
+            </div></div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm h-100"><div class="card-body">
+                <div class="text-muted small">This month — calls</div>
+                <div class="h3 mb-0">@Model.CurrentMonth.Calls.ToString("N0")</div>
+            </div></div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white"><strong>Last 12 months</strong></div>
+        <div class="card-body">
+            <canvas id="monthlyChart" height="90"></canvas>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        @if (Model.ShowByModel)
+        {
+            <div class="col-lg-6">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header bg-white"><strong>By model (this month)</strong></div>
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead><tr><th>Model</th><th class="text-end">Prompt</th><th class="text-end">Completion</th><th class="text-end">Total</th><th class="text-end">Calls</th></tr></thead>
+                            <tbody>
+                            @foreach (var g in Model.ByModel)
+                            {
+                                <tr>
+                                    <td><code>@g.Key</code></td>
+                                    <td class="text-end">@g.PromptTokens.ToString("N0")</td>
+                                    <td class="text-end">@g.CompletionTokens.ToString("N0")</td>
+                                    <td class="text-end"><strong>@g.TotalTokens.ToString("N0")</strong></td>
+                                    <td class="text-end">@g.Calls</td>
+                                </tr>
+                            }
+                            @if (Model.ByModel.Count == 0)
+                            {
+                                <tr><td colspan="5" class="text-center text-muted py-4">No usage recorded yet this month.</td></tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        }
+        <div class="@(Model.ShowByModel ? "col-lg-6" : "col-12")">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white"><strong>By agent (this month)</strong></div>
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead><tr><th>Agent</th><th class="text-end">Prompt</th><th class="text-end">Completion</th><th class="text-end">Total</th><th class="text-end">Calls</th></tr></thead>
+                        <tbody>
+                        @foreach (var g in Model.ByAgent)
+                        {
+                            <tr>
+                                <td>@(string.IsNullOrWhiteSpace(g.Key) ? "(unknown)" : g.Key)</td>
+                                <td class="text-end">@g.PromptTokens.ToString("N0")</td>
+                                <td class="text-end">@g.CompletionTokens.ToString("N0")</td>
+                                <td class="text-end"><strong>@g.TotalTokens.ToString("N0")</strong></td>
+                                <td class="text-end">@g.Calls</td>
+                            </tr>
+                        }
+                        @if (Model.ByAgent.Count == 0)
+                        {
+                            <tr><td colspan="5" class="text-center text-muted py-4">No usage recorded yet this month.</td></tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@latest/dist/chart.umd.min.js"></script>
+    <script>
+        (function () {
+            const monthly = @Html.Raw(Model.MonthlySeriesJson);
+            const ctx = document.getElementById('monthlyChart');
+            if (!ctx || typeof Chart === 'undefined') return;
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: monthly.map(m => m.label),
+                    datasets: [
+                        { label: 'Prompt',     data: monthly.map(m => m.prompt),     backgroundColor: 'rgba(13,110,253,0.75)' },
+                        { label: 'Completion', data: monthly.map(m => m.completion), backgroundColor: 'rgba(25,135,84,0.75)' }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } },
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+        })();
+    </script>
+}

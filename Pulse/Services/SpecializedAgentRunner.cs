@@ -34,6 +34,7 @@ public sealed class SpecializedAgentRunner(
     AgentMailPlugin agentMailPlugin,
     FlatFileDataPlugin flatFileDataPlugin,
     ChatHistoryService chatHistory,
+    LlmUsageService usageService,
     IHubContext<AgentHub> hubContext,
     ILogger<SpecializedAgentRunner> logger)
 {
@@ -245,10 +246,12 @@ public sealed class SpecializedAgentRunner(
             };
 
             var responseBuilder = new StringBuilder();
+            var usage = (Prompt: 0, Completion: 0, Total: 0);
 
             await foreach (var chunk in chatService.GetStreamingChatMessageContentsAsync(
                 history, executionSettings: execSettings, kernel: kernel, cancellationToken: ct))
             {
+                usage = LlmUsageService.ExtractTokens(chunk.Metadata, usage);
                 if (!string.IsNullOrEmpty(chunk.Content))
                 {
                     responseBuilder.Append(chunk.Content);
@@ -261,6 +264,17 @@ public sealed class SpecializedAgentRunner(
                             content   = chunk.Content
                         }, cancellationToken: ct);
                 }
+            }
+
+            try
+            {
+                await usageService.RecordAsync(
+                    tenantId, userId, agent.Name, modelId,
+                    usage.Prompt, usage.Completion, usage.Total, ct);
+            }
+            catch (Exception uex)
+            {
+                logger.LogWarning(uex, "SubAgent {Name}: failed to record LLM usage", agent.Name);
             }
 
             await hubContext.Clients.Group(parentSessionId)

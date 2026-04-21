@@ -41,6 +41,7 @@ namespace Pulse.Data
 		public DbSet<Tenant>                   Tenants              => Set<Tenant>();
 		public DbSet<GlobalAgentMailSettings>  GlobalAgentMailSettings => Set<GlobalAgentMailSettings>();
 		public DbSet<GlobalLlmSettings>        GlobalLlmSettings    => Set<GlobalLlmSettings>();
+		public DbSet<LlmUsageEntity>           LlmUsage             => Set<LlmUsageEntity>();
 
 		protected override void OnModelCreating(ModelBuilder builder)
 		{
@@ -254,6 +255,16 @@ namespace Pulse.Data
 				e.Property(s => s.ApiVersion).HasMaxLength(20);
 			});
 
+			builder.Entity<LlmUsageEntity>(e =>
+			{
+				e.HasIndex(u => u.TenantId);
+				e.HasIndex(u => new { u.TenantId, u.CreatedUtc });
+				e.HasIndex(u => new { u.TenantId, u.UserId, u.CreatedUtc });
+				e.Property(u => u.UserId).HasMaxLength(450);
+				e.Property(u => u.AgentName).HasMaxLength(200);
+				e.Property(u => u.ModelId).HasMaxLength(200);
+			});
+
 			// ── Multi-tenancy global query filters ───────────────────────────────────────
 			// Filter is bypassed for SuperAdmin (TenantId == null) so they can see all tenants.
 			// Background jobs set _tenantContext via SetTenantId() before querying.
@@ -298,6 +309,11 @@ namespace Pulse.Data
 								   || e.TenantId == _tenantContext.TenantId);
 
 			builder.Entity<ChatMessageEntity>()
+				.HasQueryFilter(e => _tenantContext == null
+								   || _tenantContext.TenantId == null
+								   || e.TenantId == _tenantContext.TenantId);
+
+			builder.Entity<LlmUsageEntity>()
 				.HasQueryFilter(e => _tenantContext == null
 								   || _tenantContext.TenantId == null
 								   || e.TenantId == _tenantContext.TenantId);

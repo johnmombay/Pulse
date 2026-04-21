@@ -21,6 +21,7 @@ public sealed class ScheduledAgentRunner(
     TerminalPlugin terminalPlugin,
     AgentMailPlugin agentMailPlugin,
     FlatFileDataPlugin flatFileDataPlugin,
+    LlmUsageService usageService,
     ILogger<ScheduledAgentRunner> logger)
 {
     public async Task<(string Result, bool Success)> RunAsync(
@@ -90,6 +91,21 @@ public sealed class ScheduledAgentRunner(
 
             // Append any charts the agent generated during this run
             content = chartPlugin.EmbedIn(content);
+
+            try
+            {
+                var (p, c, t) = LlmUsageService.ExtractTokens(result.Metadata);
+                await usageService.RecordAsync(
+                    tenantContext.TenantId ?? Guid.Empty,
+                    userId: string.Empty,
+                    agentName: "ScheduledTask",
+                    modelId: settings.ModelId,
+                    promptTokens: p, completionTokens: c, totalTokens: t, ct);
+            }
+            catch (Exception uex)
+            {
+                logger.LogWarning(uex, "ScheduledAgentRunner: failed to record LLM usage");
+            }
 
             logger.LogInformation(
                 "ScheduledAgentRunner completed ({Chars} chars)", content.Length);

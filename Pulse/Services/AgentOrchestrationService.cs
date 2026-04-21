@@ -37,6 +37,7 @@ public sealed class AgentOrchestrationService(
     TerminalPlugin terminalPlugin,
     AgentMailPlugin agentMailPlugin,
     FlatFileDataPlugin flatFileDataPlugin,
+    LlmUsageService usageService,
     IHubContext<AgentHub> hubContext,
     ILogger<AgentOrchestrationService> logger)
 {
@@ -310,6 +311,7 @@ public sealed class AgentOrchestrationService(
 
                 responseBuilder.Clear();
                 var streamedAnything = false;
+                var usage = (Prompt: 0, Completion: 0, Total: 0);
 
                 try
                 {
@@ -319,6 +321,7 @@ public sealed class AgentOrchestrationService(
                         kernel: kernel,
                         cancellationToken: cancellationToken))
                     {
+                        usage = LlmUsageService.ExtractTokens(chunk.Metadata, usage);
                         if (!string.IsNullOrEmpty(chunk.Content))
                         {
                             streamedAnything = true;
@@ -326,6 +329,18 @@ public sealed class AgentOrchestrationService(
                             await hubContext.Clients.Group(sessionId)
                                 .SendAsync("ReceiveChunk", chunk.Content, cancellationToken: cancellationToken);
                         }
+                    }
+
+                    // Best-effort — never let usage persistence break the agent turn.
+                    try
+                    {
+                        await usageService.RecordAsync(
+                            tenantId, userId, "Orchestrator", modelId,
+                            usage.Prompt, usage.Completion, usage.Total, cancellationToken);
+                    }
+                    catch (Exception uex)
+                    {
+                        logger.LogWarning(uex, "Session {SessionId}: failed to record LLM usage", sessionId);
                     }
 
                     lastError = null;
