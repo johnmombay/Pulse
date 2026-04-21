@@ -1,0 +1,92 @@
+@page
+@model Pulse.Areas.Identity.Pages.Account.AcceptInvitationModel
+@{
+    ViewData["Title"] = "Accept your invitation";
+}
+
+@section Styles {
+<style>
+    .bp-auth      { display:flex; justify-content:center; padding:2rem 1rem 4rem; }
+    .bp-auth-card {
+        width:100%; max-width:460px;
+        background:var(--surface-1);
+        border:1px solid var(--surface-border);
+        border-radius:.9rem;
+        box-shadow:var(--shadow-card-hover);
+        padding:2.25rem 2.25rem 2rem;
+    }
+    .bp-auth-card .form-control {
+        background:var(--surface-2);
+        border-color:var(--surface-border);
+        color:var(--page-text);
+        font-size:.875rem;
+    }
+    .bp-auth-card .form-control:focus {
+        background:var(--surface-1);
+        border-color:var(--brand);
+        box-shadow:0 0 0 3px rgba(37,99,235,.12);
+        color:var(--page-text);
+    }
+    .bp-auth-card .form-floating > label { color:var(--sidebar-text-muted); font-size:.82rem; }
+</style>
+}
+
+<div class="bp-auth">
+    <div class="bp-auth-card">
+
+        <partial name="_AuthLogo" />
+
+        @if (!Model.IsValidInvitation)
+        {
+            <h1 style="font-size:1.4rem;font-weight:700;margin:0 0 .5rem;color:var(--page-text)">
+                Invitation link invalid
+            </h1>
+            <p style="font-size:.9rem;color:var(--sidebar-text-muted);margin:0 0 1.25rem;line-height:1.6">
+                This invitation link is missing required information or has already been used.
+                Please ask whoever invited you to send a new one.
+            </p>
+        }
+        else
+        {
+            <h1 style="font-size:1.45rem;font-weight:700;margin-bottom:.3rem;color:var(--page-text)">
+                Welcome to @Model.TenantName
+            </h1>
+            <p style="font-size:.875rem;color:var(--sidebar-text-muted);margin-bottom:1.5rem">
+                Hi @Model.InviteeFirstName, set a password for
+                <strong style="color:var(--page-text)">@Model.Email</strong> to finish creating your account.
+                You'll be signed in automatically.
+            </p>
+
+            <form method="post" novalidate>
+                <div asp-validation-summary="ModelOnly" class="alert alert-danger py-2 px-3 mb-3"
+                     role="alert" style="font-size:.82rem;border-radius:.55rem"></div>
+
+                <input type="hidden" asp-for="UserId" />
+                <input type="hidden" asp-for="Code" />
+
+                <div class="form-floating mb-3">
+                    <input asp-for="Input.Password" class="form-control" autocomplete="new-password"
+                           aria-required="true" placeholder="Password" />
+                    <label asp-for="Input.Password">New password</label>
+                    <span asp-validation-for="Input.Password" class="text-danger d-block mt-1" style="font-size:.78rem"></span>
+                </div>
+
+                <div class="form-floating mb-4">
+                    <input asp-for="Input.ConfirmPassword" class="form-control" autocomplete="new-password"
+                           aria-required="true" placeholder="Confirm password" />
+                    <label asp-for="Input.ConfirmPassword">Confirm password</label>
+                    <span asp-validation-for="Input.ConfirmPassword" class="text-danger d-block mt-1" style="font-size:.78rem"></span>
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100 fw-semibold" style="padding:.65rem">
+                    Set password &amp; sign in
+                </button>
+            </form>
+        }
+
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
