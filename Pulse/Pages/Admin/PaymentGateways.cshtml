@@ -1,0 +1,236 @@
+@page
+@model Pulse.Pages.Admin.PaymentGatewaysModel
+@using Pulse.Data.Entities
+@{
+    ViewData["Title"] = "Payment Gateways";
+    var active = Model.Gateways.FirstOrDefault(g => g.IsActive);
+}
+
+@if (!string.IsNullOrEmpty(Model.StatusMessage))
+{
+    <div class="alert alert-success alert-dismissible mb-4" role="alert">
+        @Model.StatusMessage
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+}
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <p class="text-muted small mb-0">
+            @if (active is not null)
+            {
+                <span>Active gateway: <strong>@active.Provider</strong>@(active.IsTestMode ? " (Test Mode)" : " (Live)")</span>
+            }
+            else
+            {
+                <span class="text-warning">No active payment gateway configured.</span>
+            }
+        </p>
+    </div>
+    @if (active is not null)
+    {
+        <form method="post" asp-page-handler="Deactivate">
+            <button type="submit" class="btn btn-sm btn-outline-warning"
+                    onclick="return confirm('Disable all payment gateways?')">
+                Disable All
+            </button>
+        </form>
+    }
+</div>
+
+<div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4">
+    @foreach (var gw in Model.Gateways)
+    {
+        <div class="col">
+            <div class="bp-card h-100 @(gw.IsActive ? "border border-success" : "")">
+                <div class="p-4">
+                    <div class="d-flex align-items-start justify-content-between mb-3">
+                        <div>
+                            <h5 class="mb-1 fw-semibold">@ProviderDisplayName(gw.Provider)</h5>
+                            <div class="d-flex gap-2">
+                                @if (gw.IsActive)
+                                {
+                                    <span class="badge bg-success">Active</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Inactive</span>
+                                }
+                                @if (gw.IsTestMode)
+                                {
+                                    <span class="badge bg-warning text-dark">Test Mode</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-primary">Live</span>
+                                }
+                            </div>
+                        </div>
+                        <div class="text-muted" style="font-size:2rem" aria-hidden="true">
+                            @ProviderIcon(gw.Provider)
+                        </div>
+                    </div>
+
+                    <p class="text-muted small mb-0">
+                        Last updated: @gw.UpdatedAtUtc.ToString("yyyy-MM-dd HH:mm") UTC
+                    </p>
+                </div>
+
+                <div class="border-top p-3 d-flex gap-2">
+                    @if (!gw.IsActive)
+                    {
+                        <form method="post" asp-page-handler="Activate">
+                            <input type="hidden" name="provider" value="@gw.Provider" />
+                            <button type="submit" class="btn btn-sm btn-outline-success"
+                                    onclick="return confirm('Set @gw.Provider as the active payment gateway?')">
+                                Set Active
+                            </button>
+                        </form>
+                    }
+                    <button type="button" class="btn btn-sm btn-outline-primary"
+                            onclick="openConfigModal(@gw.Id, '@gw.Provider', @gw.IsTestMode.ToString().ToLower(),
+                                     '@(gw.ApiKey ?? "")', '@(gw.SecretKey ?? "")', '@(gw.WebhookSecret ?? "")',
+                                     '@(gw.ClientId ?? "")', '@(gw.ClientSecret ?? "")', '@(gw.MerchantCode ?? "")')">
+                        Configure
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@* ══════════════════════════ CONFIGURE MODAL ══════════════════════════ *@
+<div class="modal fade" id="configModal" tabindex="-1" aria-labelledby="configModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" asp-page-handler="Save">
+                <input type="hidden" name="Settings.Id" id="cfg_Id" />
+                <input type="hidden" name="Settings.Provider" id="cfg_Provider" />
+
+                <div class="modal-header">
+                    <h5 class="modal-title" id="configModalLabel">Configure <span id="cfg_ProviderName"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" name="Settings.IsTestMode" id="cfg_IsTestMode" value="true" />
+                        <input type="hidden" name="Settings.IsTestMode" value="false" />
+                        <label class="form-check-label" for="cfg_IsTestMode">Test Mode</label>
+                    </div>
+
+                    @* HitPay / PayMongo / Stripe: ApiKey + SecretKey *@
+                    <div id="cfg_apiKeyRow" class="mb-3">
+                        <label class="form-label" id="cfg_apiKeyLabel">API Key</label>
+                        <input type="text" class="form-control" name="Settings.ApiKey" id="cfg_ApiKey"
+                               autocomplete="off" />
+                    </div>
+                    <div id="cfg_secretKeyRow" class="mb-3">
+                        <label class="form-label" id="cfg_secretKeyLabel">Secret Key</label>
+                        <input type="password" class="form-control" name="Settings.SecretKey" id="cfg_SecretKey"
+                               autocomplete="new-password" />
+                    </div>
+
+                    @* Stripe / HitPay: WebhookSecret *@
+                    <div id="cfg_webhookRow" class="mb-3">
+                        <label class="form-label">Webhook Secret</label>
+                        <input type="password" class="form-control" name="Settings.WebhookSecret" id="cfg_WebhookSecret"
+                               autocomplete="new-password" />
+                    </div>
+
+                    @* PayPal: ClientId + ClientSecret *@
+                    <div id="cfg_clientIdRow" class="mb-3">
+                        <label class="form-label">Client ID</label>
+                        <input type="text" class="form-control" name="Settings.ClientId" id="cfg_ClientId"
+                               autocomplete="off" />
+                    </div>
+                    <div id="cfg_clientSecretRow" class="mb-3">
+                        <label class="form-label">Client Secret</label>
+                        <input type="password" class="form-control" name="Settings.ClientSecret" id="cfg_ClientSecret"
+                               autocomplete="new-password" />
+                    </div>
+
+                    @* DragonPay: MerchantCode + SecretKey *@
+                    <div id="cfg_merchantRow" class="mb-3">
+                        <label class="form-label">Merchant Code</label>
+                        <input type="text" class="form-control" name="Settings.MerchantCode" id="cfg_MerchantCode"
+                               autocomplete="off" />
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+function openConfigModal(id, provider, isTestMode, apiKey, secretKey, webhookSecret, clientId, clientSecret, merchantCode) {
+    document.getElementById('cfg_Id').value           = id;
+    document.getElementById('cfg_Provider').value     = provider;
+    document.getElementById('cfg_ProviderName').textContent = provider;
+    document.getElementById('cfg_IsTestMode').checked = isTestMode;
+    document.getElementById('cfg_ApiKey').value        = apiKey;
+    document.getElementById('cfg_SecretKey').value     = secretKey;
+    document.getElementById('cfg_WebhookSecret').value = webhookSecret;
+    document.getElementById('cfg_ClientId').value      = clientId;
+    document.getElementById('cfg_ClientSecret').value  = clientSecret;
+    document.getElementById('cfg_MerchantCode').value  = merchantCode;
+
+    // Show/hide fields based on provider
+    const show = (id) => document.getElementById(id).style.display = '';
+    const hide = (id) => document.getElementById(id).style.display = 'none';
+
+    // Reset all
+    ['cfg_apiKeyRow','cfg_secretKeyRow','cfg_webhookRow','cfg_clientIdRow','cfg_clientSecretRow','cfg_merchantRow']
+        .forEach(hide);
+
+    if (provider === 'Stripe') {
+        document.getElementById('cfg_apiKeyLabel').textContent = 'Publishable Key';
+        document.getElementById('cfg_secretKeyLabel').textContent = 'Secret Key';
+        show('cfg_apiKeyRow'); show('cfg_secretKeyRow'); show('cfg_webhookRow');
+    } else if (provider === 'PayPal') {
+        show('cfg_clientIdRow'); show('cfg_clientSecretRow');
+    } else if (provider === 'DragonPay') {
+        show('cfg_merchantRow'); show('cfg_secretKeyRow');
+        document.getElementById('cfg_secretKeyLabel').textContent = 'Secret Key';
+    } else if (provider === 'HitPay') {
+        document.getElementById('cfg_apiKeyLabel').textContent = 'API Key';
+        document.getElementById('cfg_secretKeyLabel').textContent = 'Salt / Secret';
+        show('cfg_apiKeyRow'); show('cfg_secretKeyRow'); show('cfg_webhookRow');
+    } else { // PayMongo
+        document.getElementById('cfg_apiKeyLabel').textContent = 'Public Key';
+        document.getElementById('cfg_secretKeyLabel').textContent = 'Secret Key';
+        show('cfg_apiKeyRow'); show('cfg_secretKeyRow');
+    }
+
+    new bootstrap.Modal(document.getElementById('configModal')).show();
+}
+</script>
+}
+
+@functions {
+    static string ProviderDisplayName(PaymentGatewayProvider p) => p switch
+    {
+        PaymentGatewayProvider.HitPay   => "HitPay",
+        PaymentGatewayProvider.PayMongo => "PayMongo",
+        PaymentGatewayProvider.DragonPay => "DragonPay",
+        PaymentGatewayProvider.Stripe   => "Stripe",
+        PaymentGatewayProvider.PayPal   => "PayPal",
+        _ => p.ToString()
+    };
+
+    static string ProviderIcon(PaymentGatewayProvider p) => p switch
+    {
+        PaymentGatewayProvider.Stripe   => "💳",
+        PaymentGatewayProvider.PayPal   => "🅿",
+        PaymentGatewayProvider.HitPay   => "⚡",
+        PaymentGatewayProvider.PayMongo => "🌐",
+        PaymentGatewayProvider.DragonPay => "🐉",
+        _ => "💰"
+    };
+}

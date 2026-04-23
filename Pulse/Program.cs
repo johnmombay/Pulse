@@ -95,6 +95,7 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<LlmSettingsService>();
 builder.Services.AddSingleton<GlobalAgentMailSettingsService>();
 builder.Services.AddSingleton<GlobalLlmSettingsService>();
+builder.Services.AddSingleton<PaymentGatewayService>();
 builder.Services.AddSingleton<LlmUsageService>();
 builder.Services.AddSingleton<GeminiKeyRotationService>();
 builder.Services.AddSingleton<ChatHistoryService>();

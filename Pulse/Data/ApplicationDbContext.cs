@@ -43,7 +43,8 @@ namespace Pulse.Data
 		public DbSet<TenantSubscription>       TenantSubscriptions  => Set<TenantSubscription>();
 		public DbSet<GlobalAgentMailSettings>  GlobalAgentMailSettings => Set<GlobalAgentMailSettings>();
 		public DbSet<GlobalLlmSettings>        GlobalLlmSettings    => Set<GlobalLlmSettings>();
-		public DbSet<LlmUsageEntity>           LlmUsage             => Set<LlmUsageEntity>();
+		public DbSet<LlmUsageEntity>           LlmUsage                 => Set<LlmUsageEntity>();
+		public DbSet<PaymentGatewaySettings>   PaymentGatewaySettings   => Set<PaymentGatewaySettings>();
 
 		protected override void OnModelCreating(ModelBuilder builder)
 		{
@@ -292,6 +293,27 @@ namespace Pulse.Data
 				e.Property(u => u.UserId).HasMaxLength(450);
 				e.Property(u => u.AgentName).HasMaxLength(200);
 				e.Property(u => u.ModelId).HasMaxLength(200);
+			});
+
+			builder.Entity<PaymentGatewaySettings>(e =>
+			{
+				e.HasIndex(p => p.IsActive);
+				e.Property(p => p.Provider).HasConversion<string>().HasMaxLength(20);
+				e.Property(p => p.ApiKey).HasMaxLength(500);
+				e.Property(p => p.SecretKey).HasMaxLength(500);
+				e.Property(p => p.WebhookSecret).HasMaxLength(500);
+				e.Property(p => p.ClientId).HasMaxLength(500);
+				e.Property(p => p.ClientSecret).HasMaxLength(500);
+				e.Property(p => p.MerchantCode).HasMaxLength(200);
+
+				// Seed one row per provider - all inactive by default
+				e.HasData(
+					new PaymentGatewaySettings { Id = 1, Provider = PaymentGatewayProvider.HitPay,   IsActive = false, IsTestMode = true, UpdatedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc) },
+					new PaymentGatewaySettings { Id = 2, Provider = PaymentGatewayProvider.PayMongo,  IsActive = false, IsTestMode = true, UpdatedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc) },
+					new PaymentGatewaySettings { Id = 3, Provider = PaymentGatewayProvider.DragonPay, IsActive = false, IsTestMode = true, UpdatedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc) },
+					new PaymentGatewaySettings { Id = 4, Provider = PaymentGatewayProvider.Stripe,    IsActive = false, IsTestMode = true, UpdatedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc) },
+					new PaymentGatewaySettings { Id = 5, Provider = PaymentGatewayProvider.PayPal,    IsActive = false, IsTestMode = true, UpdatedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc) }
+				);
 			});
 
 			// ── Multi-tenancy global query filters ───────────────────────────────────────
