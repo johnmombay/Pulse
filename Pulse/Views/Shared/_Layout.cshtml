@@ -129,6 +129,26 @@
                 @if (User.IsInRole("SuperAdmin"))
                 {
                     <li>
+                        <a class="sidebar-nav-item" asp-page="/Admin/Tenants">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <rect x="2" y="7" width="20" height="14" rx="2"/>
+                                <path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/>
+                            </svg>
+                            Tenants
+                        </a>
+                    </li>
+                    <li>
+                        <a class="sidebar-nav-item" asp-page="/Admin/Plans">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
+                                <line x1="1" y1="10" x2="23" y2="10"/>
+                            </svg>
+                            Plans
+                        </a>
+                    </li>
+                    <li>
                         <a class="sidebar-nav-item" asp-page="/Admin/Usage">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

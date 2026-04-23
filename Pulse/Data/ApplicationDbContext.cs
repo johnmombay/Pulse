@@ -39,6 +39,8 @@ namespace Pulse.Data
 
 		// ── Multi-tenancy ─────────────────────────────────────────────────────────
 		public DbSet<Tenant>                   Tenants              => Set<Tenant>();
+		public DbSet<SubscriptionPlan>         SubscriptionPlans    => Set<SubscriptionPlan>();
+		public DbSet<TenantSubscription>       TenantSubscriptions  => Set<TenantSubscription>();
 		public DbSet<GlobalAgentMailSettings>  GlobalAgentMailSettings => Set<GlobalAgentMailSettings>();
 		public DbSet<GlobalLlmSettings>        GlobalLlmSettings    => Set<GlobalLlmSettings>();
 		public DbSet<LlmUsageEntity>           LlmUsage             => Set<LlmUsageEntity>();
@@ -234,6 +236,33 @@ namespace Pulse.Data
 				e.Property(t => t.Slug).HasMaxLength(100).IsRequired();
 				e.HasIndex(t => t.Slug).IsUnique();
 				e.HasIndex(t => t.Name).IsUnique();
+			});
+
+			builder.Entity<SubscriptionPlan>(e =>
+			{
+				e.Property(p => p.Name).HasMaxLength(100).IsRequired();
+				e.Property(p => p.Description).HasMaxLength(500);
+				e.Property(p => p.MonthlyPrice).HasColumnType("decimal(18,2)");
+				e.Property(p => p.AnnualPrice).HasColumnType("decimal(18,2)");
+				e.Property(p => p.OveragePricePerUser).HasColumnType("decimal(18,4)");
+				e.Property(p => p.OveragePricePerDatabase).HasColumnType("decimal(18,4)");
+				e.Property(p => p.OveragePricePerAgent).HasColumnType("decimal(18,4)");
+				e.Property(p => p.OveragePricePerUsageUnit).HasColumnType("decimal(18,6)");
+			});
+
+			builder.Entity<TenantSubscription>(e =>
+			{
+				e.Property(s => s.BillingCycle).HasConversion<string>().HasMaxLength(20);
+				e.Property(s => s.Status).HasConversion<string>().HasMaxLength(20);
+				e.HasIndex(s => s.TenantId);
+				e.HasOne(s => s.Tenant)
+				 .WithMany()
+				 .HasForeignKey(s => s.TenantId)
+				 .OnDelete(DeleteBehavior.Cascade);
+				e.HasOne(s => s.SubscriptionPlan)
+				 .WithMany(p => p.TenantSubscriptions)
+				 .HasForeignKey(s => s.SubscriptionPlanId)
+				 .OnDelete(DeleteBehavior.Restrict);
 			});
 
 			builder.Entity<GlobalAgentMailSettings>(e =>
