@@ -38,6 +38,7 @@ public sealed class AgentOrchestrationService(
     AgentMailPlugin agentMailPlugin,
     FlatFileDataPlugin flatFileDataPlugin,
     LlmUsageService usageService,
+    ISubscriptionLimitService subscriptionLimits,
     IHubContext<AgentHub> hubContext,
     ILogger<AgentOrchestrationService> logger)
 {
@@ -166,6 +167,15 @@ public sealed class AgentOrchestrationService(
 
             var tenantId = tenantContext.TenantId ?? Guid.Empty;
             var settings = await llmSettings.GetAsync(tenantId);
+
+            // ── Subscription usage limit check ────────────────────────────────
+            if (tenantId != Guid.Empty && !await subscriptionLimits.IsWithinUsageLimitAsync(tenantId, cancellationToken))
+            {
+                const string limitMsg = "Your subscription plan's monthly usage limit has been reached. Please upgrade your plan to continue using the agent.";
+                await hubContext.Clients.Group(sessionId)
+                    .SendAsync("AgentError", limitMsg, cancellationToken: cancellationToken);
+                return limitMsg;
+            }
 
             // ── Agent system determination ────────────────────────────────────
             var agentDefs        = settings.AgentDefinitions ?? [];

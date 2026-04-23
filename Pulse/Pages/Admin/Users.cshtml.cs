@@ -23,6 +23,7 @@ public class UsersModel(
     ApplicationDbContext db,
     IEmailSender emailSender,
     LlmSettingsService settingsService,
+    ISubscriptionLimitService subscriptionLimits,
     ILogger<UsersModel> logger) : PageModel
 {
     public record UserRow(string Id, string? FirstName, string? LastName, string? Email, string Role)
@@ -350,7 +351,18 @@ public class UsersModel(
             return Page();
         }
 
-        // Check whether the email already exists anywhere in the system. Username
+        // Enforce subscription user limit for tenant invitations.
+        if (CurrentTenantId is Guid inviteTenantId)
+        {
+            if (!await subscriptionLimits.CanAddUserAsync(inviteTenantId))
+            {
+                ModelState.AddModelError(string.Empty, "Your subscription plan's user limit has been reached. Please upgrade your plan to invite more users.");
+                await LoadAsync();
+                return Page();
+            }
+        }
+
+        // Check whether the email already exists anywhere in the system.
         // equals email (required for email-based login), so UserName is globally unique.
         var existing = await userManager.FindByEmailAsync(Invite.Email);
         ApplicationUser user;

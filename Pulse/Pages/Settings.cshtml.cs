@@ -19,7 +19,8 @@ public class SettingsModel(
     IWebHostEnvironment env,
     ITenantContext tenantContext,
     GlobalAgentMailSettingsService globalAgentMail,
-    GlobalLlmSettingsService globalLlm) : PageModel
+    GlobalLlmSettingsService globalLlm,
+    ISubscriptionLimitService subscriptionLimits) : PageModel
 {
     // TODO(multi-tenancy): Admin settings pages should validate the user belongs to this tenant.
     private Guid TenantId => tenantContext.TenantId ?? Guid.Empty;
@@ -343,12 +344,20 @@ public class SettingsModel(
         if (string.IsNullOrWhiteSpace(AgentDef.SystemPrompt))
             return new JsonResult(new { success = false, error = "System prompt is required." });
 
+        var isNewAgent = string.IsNullOrWhiteSpace(AgentDef.Id);
+
+        // Enforce subscription agent limit only when adding a new agent.
+        if (isNewAgent && TenantId != Guid.Empty)
+        {
+            if (!await subscriptionLimits.CanAddAgentAsync(TenantId))
+                return new JsonResult(new { success = false, error = "Your subscription plan's agent limit has been reached. Please upgrade your plan to add more agents." });
+        }
+
         try
         {
-            var isNew = string.IsNullOrWhiteSpace(AgentDef.Id);
             var agent = new AgentDefinition
             {
-                Id                    = isNew ? Guid.NewGuid().ToString("N") : AgentDef.Id,
+                Id                    = isNewAgent ? Guid.NewGuid().ToString("N") : AgentDef.Id,
                 Name                  = AgentDef.Name.Trim(),
                 Icon                  = string.IsNullOrWhiteSpace(AgentDef.Icon) ? "🤖" : AgentDef.Icon.Trim(),
                 Description           = AgentDef.Description?.Trim() ?? "",
@@ -370,7 +379,7 @@ public class SettingsModel(
             return new JsonResult(new
             {
                 success = true,
-                message = $"Agent \"{agent.Name}\" {(isNew ? "added" : "updated")}."
+                message = $"Agent \"{agent.Name}\" {(isNewAgent ? "added" : "updated")}."
             });
         }
         catch (InvalidOperationException ex)
@@ -518,6 +527,15 @@ public class SettingsModel(
             return new JsonResult(new { success = false, error = "Connection string is required." });
 
         var id = DbConn.ConnectionId.Trim().ToLowerInvariant().Replace(' ', '-');
+
+        // Enforce subscription database limit only when adding a new connection.
+        var isNewDbConn = !(await settingsService.GetAsync(TenantId)).DatabaseConnections.ContainsKey(id);
+        if (isNewDbConn && TenantId != Guid.Empty)
+        {
+            if (!await subscriptionLimits.CanAddDatabaseAsync(TenantId))
+                return new JsonResult(new { success = false, error = "Your subscription plan's database/data source limit has been reached. Please upgrade your plan to add more connections." });
+        }
+
         try
         {
             var entry = new DatabaseConnectionEntry
@@ -590,9 +608,18 @@ public class SettingsModel(
             return new JsonResult(new { success = false, error = "A tenant context is required to upload data sources." })
                 { StatusCode = 400 };
 
+        var isNewFlatFile = string.IsNullOrWhiteSpace(FlatFile.Id);
+
+        // Enforce subscription database/data-source limit only when adding a new source.
+        if (isNewFlatFile)
+        {
+            if (!await subscriptionLimits.CanAddDatabaseAsync(TenantId))
+                return new JsonResult(new { success = false, error = "Your subscription plan's database/data source limit has been reached. Please upgrade your plan to add more data sources." });
+        }
+
         try
         {
-            var isNew = string.IsNullOrWhiteSpace(FlatFile.Id);
+            var isNew = isNewFlatFile;
             var id    = isNew
                 ? (FlatFile.Label.Trim().ToLowerInvariant()
                        .Replace(' ', '-').Replace('/', '-').Replace('\\', '-')
