@@ -255,7 +255,10 @@
     <li class="nav-item"><button type="button" class="nav-link" data-tab="agents"  >🤖 Agents</button></li>
     <li class="nav-item"><button type="button" class="nav-link" data-tab="rag"     >🗂️ RAG</button></li>
     <li class="nav-item"><button type="button" class="nav-link" data-tab="memory"  >🧠 Memory</button></li>
-    <li class="nav-item"><button type="button" class="nav-link" data-tab="terminal">🖥️ Terminal</button></li>
+    @if (isSuperAdmin)
+    {
+        <li class="nav-item"><button type="button" class="nav-link" data-tab="terminal">🖥️ Terminal</button></li>
+    }
     @if (isSuperAdmin)
     {
         <li class="nav-item"><button type="button" class="nav-link" data-tab="agentmail">✉️ AgentMail</button></li>
@@ -2106,6 +2109,8 @@
 
 </div><!-- /tab-pane-memory -->
 
+@if (isSuperAdmin)
+{
 <div id="tab-pane-terminal" class="settings-tab-pane pt-4">
 @* ═══════════════════════════════════════════════════════════════════════════
    TERMINAL (SHELL EXECUTION)
@@ -2185,6 +2190,7 @@
     </div>
 </div>
 </div><!-- /tab-pane-terminal -->
+}
 
 @* ═══════════════════════════════════════════════════════════════════════════
    AGENTMAIL (SuperAdmin only — global outbound email config)
