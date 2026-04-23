@@ -1,7 +1,7 @@
 namespace Pulse.Data.Entities;
 
 public enum BillingCycle   { Monthly, Annual }
-public enum SubscriptionStatus { Active, Cancelled, Suspended, PastDue, Trial }
+public enum SubscriptionStatus { Active, Cancelled, Suspended, PastDue, Trial, Pending }
 
 public class TenantSubscription
 {

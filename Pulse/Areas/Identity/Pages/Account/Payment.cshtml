@@ -1,0 +1,76 @@
+@page "{subscriptionId:int}"
+@model Pulse.Areas.Identity.Pages.Account.PaymentModel
+@{
+    ViewData["Title"] = "Complete Payment";
+}
+
+@section Styles {
+<style>
+.bp-auth { display:flex; justify-content:center; padding:2rem 1rem 4rem; }
+.bp-auth-card { width:100%; max-width:520px; background:var(--surface-1); border:1px solid var(--surface-border); border-radius:.9rem; box-shadow:var(--shadow-card-hover); padding:2.25rem 2.25rem 2rem; }
+.payment-summary { background:var(--surface-2); border:1px solid var(--surface-border); border-radius:.65rem; padding:1rem 1.25rem; }
+</style>
+}
+
+<div class="bp-auth">
+    <div class="bp-auth-card">
+
+        <partial name="_AuthLogo" />
+
+        <h1 style="font-size:1.45rem;font-weight:700;margin-bottom:.3rem;color:var(--page-text)">Complete your subscription</h1>
+        <p style="font-size:.875rem;color:var(--sidebar-text-muted);margin-bottom:1.75rem">
+            You're subscribing to <strong>@Model.Plan.Name</strong> on a
+            <strong>@Model.Subscription.BillingCycle</strong> billing cycle.
+        </p>
+
+        <div class="payment-summary mb-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <span style="font-size:.9rem;color:var(--page-text)">
+                    @Model.Plan.Name &mdash; @Model.Subscription.BillingCycle
+                </span>
+                <strong style="font-size:1.1rem;color:var(--brand)">$@Model.AmountDue.ToString("0.00")</strong>
+            </div>
+        </div>
+
+        @if (Model.Gateway is null)
+        {
+            <div class="alert alert-warning" style="border-radius:.65rem;font-size:.875rem">
+                No payment gateway is currently configured.
+                Please contact support to complete your subscription.
+            </div>
+            <a asp-page="SelectPlan" class="btn btn-outline-secondary w-100 mt-2" style="border-radius:.55rem">
+                ← Back to plans
+            </a>
+        }
+        else
+        {
+            <p style="font-size:.8rem;color:var(--sidebar-text-muted)" class="mb-3">
+                Payment via <strong>@Model.Gateway.Provider</strong>
+                @if (Model.Gateway.IsTestMode)
+                {
+                    <span class="badge bg-warning text-dark ms-1">Test mode</span>
+                }
+            </p>
+
+            @* ── Gateway payment widget ──────────────────────────────────────────── *@
+            @* Replace this placeholder with the real SDK embed for Model.Gateway.Provider *@
+            <div id="payment-widget" class="mb-4 p-3"
+                 style="border:1px dashed var(--surface-border);border-radius:.65rem;text-align:center;color:var(--sidebar-text-muted);font-size:.85rem">
+                [ @Model.Gateway.Provider payment widget — integrate gateway SDK here ]
+            </div>
+
+            <form method="post" asp-page-handler="Confirm" asp-route-subscriptionId="@Model.Subscription.Id">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="w-100 btn btn-primary"
+                        style="height:2.75rem;font-weight:600;border-radius:.55rem;font-size:.925rem">
+                    Pay $@Model.AmountDue.ToString("0.00") →
+                </button>
+            </form>
+
+            <div class="text-center mt-3">
+                <a asp-page="SelectPlan" style="font-size:.8rem;color:var(--sidebar-text-muted)">← Change plan</a>
+            </div>
+        }
+
+    </div>
+</div>

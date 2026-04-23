@@ -1,0 +1,143 @@
+@page
+@model Pulse.Areas.Identity.Pages.Account.SelectPlanModel
+@{
+    ViewData["Title"] = "Choose a Plan";
+}
+
+@section Styles {
+<style>
+.bp-auth { display:flex; justify-content:center; padding:2rem 1rem 4rem; }
+.plan-card { background:var(--surface-1); border:2px solid var(--surface-border); border-radius:.9rem; transition:border-color .15s, box-shadow .15s; cursor:pointer; }
+.plan-card:hover { border-color:var(--brand); box-shadow:0 0 0 3px rgba(37,99,235,.1); }
+.plan-card.selected { border-color:var(--brand); box-shadow:0 0 0 3px rgba(37,99,235,.15); }
+.plan-badge { display:inline-block; font-size:.72rem; font-weight:600; padding:.2rem .55rem; border-radius:99px; background:rgba(37,99,235,.1); color:var(--brand); }
+</style>
+}
+
+<div class="bp-auth">
+    <div style="width:100%;max-width:860px">
+
+        <partial name="_AuthLogo" />
+
+        <h1 style="font-size:1.45rem;font-weight:700;margin-bottom:.3rem;color:var(--page-text)">Choose your plan</h1>
+        <p style="font-size:.875rem;color:var(--sidebar-text-muted);margin-bottom:1.5rem">
+            Select the plan that fits your team. You can upgrade any time.
+        </p>
+
+        @if (!Model.Plans.Any())
+        {
+            <div class="alert alert-warning" style="border-radius:.65rem">
+                No subscription plans are available yet. Please contact your administrator.
+            </div>
+        }
+        else
+        {
+            <div class="d-flex align-items-center gap-3 mb-4">
+                <span style="font-size:.875rem;color:var(--sidebar-text-muted)">Billing cycle:</span>
+                <div class="btn-group btn-group-sm" role="group">
+                    <input type="radio" class="btn-check" name="billingToggle" id="toggleMonthly" autocomplete="off" checked>
+                    <label class="btn btn-outline-primary" for="toggleMonthly">Monthly</label>
+                    <input type="radio" class="btn-check" name="billingToggle" id="toggleAnnual" autocomplete="off">
+                    <label class="btn btn-outline-primary" for="toggleAnnual">
+                        Annual <span class="plan-badge ms-1">Save ~17%</span>
+                    </label>
+                </div>
+            </div>
+
+            <form method="post" id="planForm">
+                <input type="hidden" asp-for="BillingCycle" id="billingCycleInput" />
+                <input type="hidden" asp-for="SelectedPlanId" id="selectedPlanIdInput" />
+
+                <div asp-validation-summary="ModelOnly" class="alert alert-danger py-2 px-3 mb-3"
+                     style="font-size:.82rem;border-radius:.55rem"></div>
+
+                <div class="row row-cols-1 row-cols-md-3 g-3 mb-4">
+                    @foreach (var plan in Model.Plans)
+                    {
+                        <div class="col">
+                            <div class="plan-card h-100 p-4" data-plan-id="@plan.Id"
+                                 data-monthly="@plan.MonthlyPrice" data-annual="@plan.AnnualPrice">
+
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                    <h5 class="fw-semibold mb-0" style="color:var(--page-text)">@plan.Name</h5>
+                                </div>
+
+                                @if (!string.IsNullOrEmpty(plan.Description))
+                                {
+                                    <p style="font-size:.8rem;color:var(--sidebar-text-muted);margin-bottom:.75rem">@plan.Description</p>
+                                }
+
+                                <div class="mb-3">
+                                    <span class="fs-4 fw-bold price-display" style="color:var(--brand)">
+                                        @(plan.MonthlyPrice == 0 ? "Free" : $"${plan.MonthlyPrice:0.00}")
+                                    </span>
+                                    <span class="price-period text-muted" style="font-size:.8rem"> / month</span>
+                                </div>
+
+                                <ul class="list-unstyled mb-4" style="font-size:.82rem;color:var(--sidebar-text-muted)">
+                                    <li class="mb-1">✓ Up to <strong>@plan.MaxUsersPerTenant</strong> users</li>
+                                    <li class="mb-1">✓ <strong>@plan.MaxAgents</strong> agents</li>
+                                    <li class="mb-1">✓ <strong>@plan.MaxDatabases</strong> data sources</li>
+                                    <li>✓ <strong>@plan.MonthlyUsageLimitUnits.ToString("N0")</strong> usage units / mo</li>
+                                </ul>
+
+                                <button type="button" class="w-100 btn btn-outline-primary select-plan-btn"
+                                        style="border-radius:.55rem;font-size:.875rem;font-weight:600"
+                                        data-plan-id="@plan.Id">
+                                    Select @plan.Name
+                                </button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </form>
+        }
+
+    </div>
+</div>
+
+@section Scripts {
+<script>
+(function () {
+    const cycleInput  = document.getElementById('billingCycleInput');
+    const planIdInput = document.getElementById('selectedPlanIdInput');
+    const form        = document.getElementById('planForm');
+    let   isAnnual    = false;
+
+    function formatPrice(val) {
+        const n = parseFloat(val);
+        return (isNaN(n) || n === 0) ? 'Free' : '$' + n.toFixed(2);
+    }
+
+    function updatePrices() {
+        document.querySelectorAll('.plan-card').forEach(card => {
+            const p      = isAnnual ? card.dataset.annual : card.dataset.monthly;
+            const period = isAnnual ? ' / year' : ' / month';
+            card.querySelector('.price-display').textContent = formatPrice(p);
+            card.querySelector('.price-period').textContent  = period;
+        });
+        cycleInput.value = isAnnual ? 'Annual' : 'Monthly';
+    }
+
+    document.getElementById('toggleMonthly').addEventListener('change', () => { isAnnual = false; updatePrices(); });
+    document.getElementById('toggleAnnual').addEventListener('change',  () => { isAnnual = true;  updatePrices(); });
+
+    document.querySelectorAll('.plan-card').forEach(card => {
+        card.addEventListener('click', () => {
+            document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
+            card.classList.add('selected');
+        });
+    });
+
+    document.querySelectorAll('.select-plan-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            planIdInput.value = btn.dataset.planId;
+            form.submit();
+        });
+    });
+
+    // Initialise
+    updatePrices();
+})();
+</script>
+}

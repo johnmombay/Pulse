@@ -109,7 +109,7 @@ public class SignupTenantModel : PageModel
                 Name       = Input.TenantName.Trim(),
                 Slug       = slug,
                 CreatedUtc = DateTime.UtcNow,
-                IsActive   = true,
+                IsActive   = false,  // activated after subscription is confirmed
             };
             _db.Tenants.Add(tenant);
             await _db.SaveChangesAsync();
@@ -185,7 +185,7 @@ public class SignupTenantModel : PageModel
                 return RedirectToPage("RegisterConfirmation", new { email = Input.Email, returnUrl });
 
             await _signInManager.SignInAsync(user, isPersistent: false);
-            return LocalRedirect(returnUrl);
+            return RedirectToPage("SelectPlan");
         }
         catch (Exception ex)
         {

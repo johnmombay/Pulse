@@ -240,6 +240,7 @@ else
 app.UseHttpsRedirection();
 app.UseRouting();
 app.UseAuthorization();
+app.UseMiddleware<Pulse.Middleware.SubscriptionGuardMiddleware>();
 
 // Hangfire dashboard (authenticated users only)
 app.UseHangfireDashboard("/hangfire", new DashboardOptions
