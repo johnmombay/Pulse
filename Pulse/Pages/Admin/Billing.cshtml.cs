@@ -2,14 +2,17 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Pulse.Data;
 using Pulse.Data.Entities;
+using Pulse.Infrastructure;
 
 namespace Pulse.Pages.Admin;
 
 [Authorize(Policy = "SuperAdminOnly")]
-public class BillingModel(ApplicationDbContext db) : PageModel
+public class BillingModel(ApplicationDbContext db, IOptions<DeploymentOptions> deployment) : PageModel
 {
+    private readonly DeploymentOptions _deployment = deployment.Value;
     // ── Summary stats ──────────────────────────────────────────────────────────
     public int    TotalTenants       { get; private set; }
     public int    ActiveSubscriptions { get; private set; }
@@ -49,9 +52,9 @@ public class BillingModel(ApplicationDbContext db) : PageModel
         public decimal OutstandingBalance  { get; init; }
     }
 
-    public async Task OnGetAsync()
+    public async Task<IActionResult> OnGetAsync()
     {
-        // ── Load invoice drill-down if requested ──────────────────────────────
+        if (_deployment.IsSingleTenant) return NotFound();
         if (TenantId.HasValue)
         {
             DrillTenantId = TenantId;
@@ -139,6 +142,7 @@ public class BillingModel(ApplicationDbContext db) : PageModel
                         i.PaidUtc!.Value.Month == DateTime.UtcNow.Month)
             .SumAsync(i => i.Amount);
         PaidRevenueTotal = invoiceAggs.Sum(a => a.TotalPaid);
+        return Page();
     }
 
     public async Task<IActionResult> OnPostVoidInvoiceAsync(int invoiceId, Guid tenantId)

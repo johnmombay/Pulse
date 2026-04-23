@@ -2,13 +2,18 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Options;
+using Pulse.Infrastructure;
 using Pulse.Services;
 
 namespace Pulse.Pages.Admin;
 
 [Authorize(Policy = "SuperAdminOnly")]
-public class UsageModel(LlmUsageService usageService) : PageModel
+public class UsageModel(
+    LlmUsageService usageService,
+    IOptions<DeploymentOptions> deployment) : PageModel
 {
+    private readonly DeploymentOptions _deployment = deployment.Value;
     [BindProperty(SupportsGet = true)]
     public int Months { get; set; } = 1;
 
@@ -30,8 +35,9 @@ public class UsageModel(LlmUsageService usageService) : PageModel
         _  => $"last {Months} months",
     };
 
-    public async Task OnGetAsync(CancellationToken ct)
+    public async Task<IActionResult> OnGetAsync(CancellationToken ct)
     {
+        if (_deployment.IsSingleTenant) return NotFound();
         if (Months is not (1 or 3 or 6 or 12)) Months = 1;
 
         ByTenant         = await usageService.GetByTenantAsync(Months, ct);
@@ -50,5 +56,6 @@ public class UsageModel(LlmUsageService usageService) : PageModel
             total      = m.TotalTokens,
             calls      = m.Calls,
         }));
+        return Page();
     }
 }

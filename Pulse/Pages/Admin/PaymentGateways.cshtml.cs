@@ -1,14 +1,19 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Options;
 using Pulse.Data.Entities;
+using Pulse.Infrastructure;
 using Pulse.Services;
 
 namespace Pulse.Pages.Admin;
 
 [Authorize(Policy = "SuperAdminOnly")]
-public class PaymentGatewaysModel(PaymentGatewayService gatewayService) : PageModel
+public class PaymentGatewaysModel(
+    PaymentGatewayService gatewayService,
+    IOptions<DeploymentOptions> deployment) : PageModel
 {
+    private readonly DeploymentOptions _deployment = deployment.Value;
     public List<PaymentGatewaySettings> Gateways { get; set; } = [];
 
     [TempData]
@@ -17,9 +22,11 @@ public class PaymentGatewaysModel(PaymentGatewayService gatewayService) : PageMo
     [BindProperty]
     public PaymentGatewaySettings Settings { get; set; } = new();
 
-    public async Task OnGetAsync()
+    public async Task<IActionResult> OnGetAsync()
     {
+        if (_deployment.IsSingleTenant) return NotFound();
         Gateways = await gatewayService.GetAllAsync();
+        return Page();
     }
 
     public async Task<IActionResult> OnPostActivateAsync(PaymentGatewayProvider provider)

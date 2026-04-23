@@ -1,5 +1,6 @@
 @inject Pulse.Services.LlmSettingsService _appSettings
 @inject Pulse.Infrastructure.ITenantContext _tenantCtx
+@inject Microsoft.Extensions.Options.IOptions<Pulse.Infrastructure.DeploymentOptions> _deploymentOpts
 @{
     var _settings = await _appSettings.GetAsync(_tenantCtx.TenantId ?? Guid.Empty);
     var _logoFile = _settings.LogoFileName;
@@ -9,6 +10,7 @@
     var _logoUrl  = _tenantCtx.TenantId is Guid _tid
         ? $"/images/tenants/{_tid:N}/app-logo.png"
         : "/images/app-logo.png";
+    var _isMultiTenant = _deploymentOpts.Value.IsMultiTenant;
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -126,7 +128,7 @@
                         Users
                     </a>
                 </li>
-                @if (User.IsInRole("TenantAdmin") && !User.IsInRole("SuperAdmin"))
+                @if (User.IsInRole("TenantAdmin") && !User.IsInRole("SuperAdmin") && _isMultiTenant)
                 {
                     <li>
                         <a class="sidebar-nav-item" asp-page="/Billing/Invoices">
@@ -144,6 +146,8 @@
                 }
                 @if (User.IsInRole("SuperAdmin"))
                 {
+                    @if (_isMultiTenant)
+                    {
                     <li>
                         <a class="sidebar-nav-item" asp-page="/Admin/Tenants">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -200,6 +204,7 @@
                             Usage (All Tenants)
                         </a>
                     </li>
+                    } @* /_isMultiTenant *@
                 }
                 <li>
                     <a class="sidebar-nav-item" asp-page="/Settings">

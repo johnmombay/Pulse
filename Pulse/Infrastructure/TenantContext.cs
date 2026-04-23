@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Options;
 
 namespace Pulse.Infrastructure;
 
@@ -27,23 +28,39 @@ public interface ITenantContext
 public class TenantContext : ITenantContext
 {
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly DeploymentOptions    _deployment;
 
     // AsyncLocal so that overrides set by background jobs are isolated per async flow
     // and do not leak across concurrent jobs sharing this singleton instance.
     private static readonly AsyncLocal<(bool Set, Guid? Value)> _override = new();
 
-    public TenantContext(IHttpContextAccessor httpContextAccessor)
+    /// <summary>
+    /// Well-known singleton tenant ID used when running in SingleTenant mode.
+    /// This row is seeded automatically at startup and never changes.
+    /// </summary>
+    public static readonly Guid SingleTenantId = new("00000000-0000-0000-0000-000000000001");
+
+    public TenantContext(
+        IHttpContextAccessor httpContextAccessor,
+        IOptions<DeploymentOptions> deploymentOptions)
     {
         _httpContextAccessor = httpContextAccessor;
+        _deployment          = deploymentOptions.Value;
     }
 
     public Guid? TenantId
     {
         get
         {
+            // Background-job override always wins.
             var ovr = _override.Value;
             if (ovr.Set) return ovr.Value;
 
+            // In single-tenant mode every request belongs to the one tenant.
+            if (_deployment.IsSingleTenant)
+                return SingleTenantId;
+
+            // Multi-tenant: resolve from the authenticated user's claim.
             var claim = _httpContextAccessor.HttpContext?
                 .User.FindFirstValue("tid");
 

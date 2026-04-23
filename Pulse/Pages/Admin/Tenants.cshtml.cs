@@ -3,8 +3,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Pulse.Data;
 using Pulse.Data.Entities;
+using Pulse.Infrastructure;
 
 namespace Pulse.Pages.Admin;
 
@@ -12,8 +14,13 @@ namespace Pulse.Pages.Admin;
 public class TenantsModel : PageModel
 {
     private readonly ApplicationDbContext _db;
+    private readonly DeploymentOptions    _deployment;
 
-    public TenantsModel(ApplicationDbContext db) => _db = db;
+    public TenantsModel(ApplicationDbContext db, IOptions<DeploymentOptions> deployment)
+    {
+        _db        = db;
+        _deployment = deployment.Value;
+    }
 
     public List<TenantRow> Tenants { get; set; } = [];
     public SelectList PlanOptions { get; set; } = new SelectList(Enumerable.Empty<object>());
@@ -54,9 +61,11 @@ public class TenantsModel : PageModel
         public BillingCycle BillingCycle { get; set; }
     }
 
-    public async Task OnGetAsync()
+    public async Task<IActionResult> OnGetAsync()
     {
+        if (_deployment.IsSingleTenant) return NotFound();
         await LoadAsync();
+        return Page();
     }
 
     public async Task<IActionResult> OnPostToggleAsync(Guid id)

@@ -13,6 +13,10 @@ using QuestPDF.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ── Deployment mode (SingleTenant / MultiTenant) ──────────────────────────────
+builder.Services.Configure<Pulse.Infrastructure.DeploymentOptions>(
+	builder.Configuration.GetSection(Pulse.Infrastructure.DeploymentOptions.SectionName));
+
 // ── QuestPDF community licence ────────────────────────────────────────────────
 QuestPDF.Settings.License = LicenseType.Community;
 
@@ -221,6 +225,9 @@ using (var startupScope = app.Services.CreateScope())
 	{
 		await userManager.AddToRoleAsync(existingAdmin, "SuperAdmin");
 	}
+
+	// Seed the default tenant when running in SingleTenant mode
+	await Pulse.Services.SingleTenantSeeder.SeedAsync(startupScope.ServiceProvider);
 
 	// Seed default agent definitions for tenants that have none yet
 	await Pulse.Services.LlmSettingsSeeder.SeedAgentDefinitionsAsync(db);

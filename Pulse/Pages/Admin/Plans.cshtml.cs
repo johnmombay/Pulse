@@ -3,14 +3,17 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Pulse.Data;
 using Pulse.Data.Entities;
+using Pulse.Infrastructure;
 
 namespace Pulse.Pages.Admin;
 
 [Authorize(Policy = "SuperAdminOnly")]
-public class PlansModel(ApplicationDbContext db) : PageModel
+public class PlansModel(ApplicationDbContext db, IOptions<DeploymentOptions> deployment) : PageModel
 {
+    private readonly DeploymentOptions _deployment = deployment.Value;
     // ── Display ───────────────────────────────────────────────────────────────
     public List<SubscriptionPlan> Plans { get; set; } = [];
 
@@ -136,12 +139,14 @@ public class PlansModel(ApplicationDbContext db) : PageModel
     }
 
     // ── GET
-    public async Task OnGetAsync()
+    public async Task<IActionResult> OnGetAsync()
     {
+        if (_deployment.IsSingleTenant) return NotFound();
         Plans = await db.SubscriptionPlans
             .Include(p => p.TenantSubscriptions)
             .OrderBy(p => p.Name)
             .ToListAsync();
+        return Page();
     }
 
     // ── POST: Create ──────────────────────────────────────────────────────────
