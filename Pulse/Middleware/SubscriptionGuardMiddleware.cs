@@ -27,6 +27,7 @@ public class SubscriptionGuardMiddleware
         "/Identity/Account/RegisterConfirmation",
         "/Identity/Account/ForgotPassword",
         "/Identity/Account/ResetPassword",
+        "/Billing",
         "/_blazor",
         "/_framework",
         "/favicon",

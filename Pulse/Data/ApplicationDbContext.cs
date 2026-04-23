@@ -45,6 +45,8 @@ namespace Pulse.Data
 		public DbSet<GlobalLlmSettings>        GlobalLlmSettings    => Set<GlobalLlmSettings>();
 		public DbSet<LlmUsageEntity>           LlmUsage                 => Set<LlmUsageEntity>();
 		public DbSet<PaymentGatewaySettings>   PaymentGatewaySettings   => Set<PaymentGatewaySettings>();
+		public DbSet<Invoice>                  Invoices                 => Set<Invoice>();
+		public DbSet<InAppNotification>        InAppNotifications       => Set<InAppNotification>();
 
 		protected override void OnModelCreating(ModelBuilder builder)
 		{
@@ -264,6 +266,40 @@ namespace Pulse.Data
 				 .WithMany(p => p.TenantSubscriptions)
 				 .HasForeignKey(s => s.SubscriptionPlanId)
 				 .OnDelete(DeleteBehavior.Restrict);
+				e.HasMany(s => s.Invoices)
+				 .WithOne(i => i.TenantSubscription)
+				 .HasForeignKey(i => i.TenantSubscriptionId)
+				 .OnDelete(DeleteBehavior.Restrict);
+			});
+
+			builder.Entity<Invoice>(e =>
+			{
+				e.HasIndex(i => i.TenantId);
+				e.HasIndex(i => i.Status);
+				e.HasIndex(i => new { i.TenantId, i.Status });
+				e.Property(i => i.Number).HasMaxLength(50).IsRequired();
+				e.Property(i => i.Amount).HasColumnType("decimal(18,2)");
+				e.Property(i => i.Status).HasConversion<string>().HasMaxLength(20);
+				e.Property(i => i.BillingCycle).HasConversion<string>().HasMaxLength(20);
+				e.Property(i => i.PaymentReference).HasMaxLength(500);
+				e.HasOne(i => i.Tenant)
+				 .WithMany()
+				 .HasForeignKey(i => i.TenantId)
+				 .OnDelete(DeleteBehavior.Cascade);
+			});
+
+			builder.Entity<InAppNotification>(e =>
+			{
+				e.HasIndex(n => n.UserId);
+				e.HasIndex(n => new { n.UserId, n.IsRead });
+				e.Property(n => n.UserId).HasMaxLength(450).IsRequired();
+				e.Property(n => n.Title).HasMaxLength(200).IsRequired();
+				e.Property(n => n.Body).HasMaxLength(2000).IsRequired();
+				e.Property(n => n.ActionUrl).HasMaxLength(500);
+				e.HasOne(n => n.User)
+				 .WithMany()
+				 .HasForeignKey(n => n.UserId)
+				 .OnDelete(DeleteBehavior.Cascade);
 			});
 
 			builder.Entity<GlobalAgentMailSettings>(e =>

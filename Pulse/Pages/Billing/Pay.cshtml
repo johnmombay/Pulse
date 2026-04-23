@@ -1,0 +1,82 @@
+@page "{invoiceId:int}"
+@model Pulse.Pages.Billing.PayModel
+@{
+    ViewData["Title"] = "Pay Invoice";
+}
+
+@section Styles {
+<style>
+.pay-card { max-width:520px; margin:2rem auto; background:var(--surface-1); border:1px solid var(--surface-border); border-radius:.9rem; box-shadow:var(--shadow-card-hover); padding:2.25rem; }
+.invoice-summary { background:var(--surface-2); border:1px solid var(--surface-border); border-radius:.65rem; padding:1rem 1.25rem; }
+</style>
+}
+
+<div class="pay-card">
+
+    <h1 style="font-size:1.35rem;font-weight:700;margin-bottom:.25rem;color:var(--page-text)">Pay Invoice</h1>
+    <p style="font-size:.875rem;color:var(--sidebar-text-muted);margin-bottom:1.5rem">
+        @Model.Invoice.Number &mdash; @Model.Invoice.BillingCycle billing
+    </p>
+
+    @if (Model.ErrorMessage is not null)
+    {
+        <div class="alert alert-danger py-2 px-3 mb-3" style="border-radius:.55rem;font-size:.875rem">
+            @Model.ErrorMessage
+        </div>
+    }
+
+    <div class="invoice-summary mb-4">
+        <div class="d-flex justify-content-between mb-2">
+            <span style="font-size:.875rem;color:var(--sidebar-text-muted)">Period</span>
+            <span style="font-size:.875rem">@Model.Invoice.PeriodStart.ToString("MMM d, yyyy") – @Model.Invoice.PeriodEnd.ToString("MMM d, yyyy")</span>
+        </div>
+        <div class="d-flex justify-content-between mb-2">
+            <span style="font-size:.875rem;color:var(--sidebar-text-muted)">Due Date</span>
+            <span style="font-size:.875rem">@Model.Invoice.DueDate.ToString("MMM d, yyyy")</span>
+        </div>
+        <hr style="border-color:var(--surface-border);margin:.5rem 0" />
+        <div class="d-flex justify-content-between align-items-center">
+            <span style="font-weight:600;color:var(--page-text)">Amount Due</span>
+            <strong style="font-size:1.2rem;color:var(--brand)">$@Model.Invoice.Amount.ToString("0.00")</strong>
+        </div>
+    </div>
+
+    @if (Model.Gateway is null)
+    {
+        <div class="alert alert-warning" style="border-radius:.65rem;font-size:.875rem">
+            <strong>Payment unavailable.</strong> No payment gateway is configured right now.
+            Please try again later or contact support.
+        </div>
+        <a asp-page="/Billing/Invoices" class="btn btn-outline-secondary w-100 mt-2" style="border-radius:.55rem">
+            ← Back to Invoices
+        </a>
+    }
+    else
+    {
+        <p style="font-size:.8rem;color:var(--sidebar-text-muted)" class="mb-3">
+            Payment via <strong>@Model.Gateway.Provider</strong>
+            @if (Model.Gateway.IsTestMode)
+            {
+                <span class="badge bg-warning text-dark ms-1">Test mode</span>
+            }
+        </p>
+
+        @* Replace with real gateway SDK widget for Model.Gateway.Provider *@
+        <div class="mb-4 p-3"
+             style="border:1px dashed var(--surface-border);border-radius:.65rem;text-align:center;color:var(--sidebar-text-muted);font-size:.85rem">
+            [ @Model.Gateway.Provider payment widget — integrate gateway SDK here ]
+        </div>
+
+        <form method="post" asp-route-invoiceId="@Model.Invoice.Id">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="w-100 btn btn-primary"
+                    style="height:2.75rem;font-weight:600;border-radius:.55rem;font-size:.925rem">
+                Pay $@Model.Invoice.Amount.ToString("0.00") →
+            </button>
+        </form>
+
+        <div class="text-center mt-3">
+            <a asp-page="/Billing/Invoices" style="font-size:.8rem;color:var(--sidebar-text-muted)">← Back to Invoices</a>
+        </div>
+    }
+</div>

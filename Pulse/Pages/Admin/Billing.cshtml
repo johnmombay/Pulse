@@ -1,0 +1,335 @@
+@page
+@using Pulse.Data.Entities
+@model Pulse.Pages.Admin.BillingModel
+@{
+    ViewData["Title"] = "Billing — All Tenants";
+}
+
+@if (!string.IsNullOrEmpty(Model.StatusMessage))
+{
+    <div class="alert alert-success alert-dismissible mb-4" role="alert">
+        @Model.StatusMessage
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+}
+
+@* ═══════════════════════════ SUMMARY CARDS ═══════════════════════════════ *@
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+        <div class="bp-card p-4">
+            <div class="text-muted small mb-1">Total Tenants</div>
+            <div class="fs-3 fw-bold" style="color:var(--page-text)">@Model.TotalTenants</div>
+            <div class="text-muted" style="font-size:.78rem">@Model.ActiveSubscriptions active subscription(s)</div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="bp-card p-4">
+            <div class="text-muted small mb-1">Past Due</div>
+            <div class="fs-3 fw-bold @(Model.PastDueCount > 0 ? "text-danger" : "")">@Model.PastDueCount</div>
+            <div class="text-muted" style="font-size:.78rem">@Model.UnpaidInvoiceCount unpaid invoice(s)</div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="bp-card p-4">
+            <div class="text-muted small mb-1">Outstanding Balance</div>
+            <div class="fs-3 fw-bold @(Model.UnpaidRevenue > 0 ? "text-warning" : "text-success")">
+                $@Model.UnpaidRevenue.ToString("N2")
+            </div>
+            <div class="text-muted" style="font-size:.78rem">across all tenants</div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="bp-card p-4">
+            <div class="text-muted small mb-1">Revenue</div>
+            <div class="fs-3 fw-bold text-success">$@Model.PaidRevenueMtd.ToString("N2")</div>
+            <div class="text-muted" style="font-size:.78rem">this month · $@Model.PaidRevenueTotal.ToString("N2") all-time</div>
+        </div>
+    </div>
+</div>
+
+@* ═══════════════════════════ INVOICE DRILL-DOWN ══════════════════════════ *@
+@if (Model.DrillTenantId.HasValue)
+{
+    <div class="bp-card mb-4">
+        <div class="d-flex align-items-center justify-content-between px-4 pt-4 pb-3"
+             style="border-bottom:1px solid var(--surface-border)">
+            <div>
+                <h5 class="mb-0 fw-semibold" style="color:var(--page-text)">
+                    Invoices — @Model.DrillTenantName
+                </h5>
+                <span class="text-muted small">@Model.DrillInvoices.Count invoice(s)</span>
+            </div>
+            <a asp-page="/Admin/Billing" class="btn btn-sm btn-outline-secondary" style="border-radius:.4rem">
+                ✕ Close
+            </a>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th class="ps-4" style="width:15%">Invoice #</th>
+                        <th style="width:22%">Period</th>
+                        <th style="width:10%">Cycle</th>
+                        <th style="width:10%">Amount</th>
+                        <th style="width:10%">Status</th>
+                        <th style="width:12%">Due Date</th>
+                        <th style="width:11%">Paid On</th>
+                        <th class="text-end pe-4" style="width:10%">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (!Model.DrillInvoices.Any())
+                    {
+                        <tr>
+                            <td colspan="8" class="text-center text-muted py-4">No invoices for this tenant.</td>
+                        </tr>
+                    }
+                    @foreach (var inv in Model.DrillInvoices)
+                    {
+                        <tr>
+                            <td class="ps-4 fw-medium" style="font-size:.875rem">@inv.Number</td>
+                            <td class="text-muted" style="font-size:.82rem">
+                                @inv.PeriodStart.ToString("MMM d, yyyy") – @inv.PeriodEnd.ToString("MMM d, yyyy")
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary bg-opacity-50 text-body">@inv.BillingCycle</span>
+                            </td>
+                            <td class="fw-semibold">$@inv.Amount.ToString("0.00")</td>
+                            <td>
+                                @if (inv.Status == InvoiceStatus.Paid)
+                                {
+                                    <span class="badge bg-success">Paid</span>
+                                }
+                                else if (inv.Status == InvoiceStatus.Unpaid)
+                                {
+                                    <span class="badge bg-danger">Unpaid</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Void</span>
+                                }
+                            </td>
+                            <td class="text-muted" style="font-size:.82rem">
+                                @if (inv.Status == InvoiceStatus.Unpaid && inv.DueDate < DateTime.UtcNow)
+                                {
+                                    <span class="text-danger fw-semibold">@inv.DueDate.ToString("MMM d, yyyy")</span>
+                                }
+                                else
+                                {
+                                    @inv.DueDate.ToString("MMM d, yyyy")
+                                }
+                            </td>
+                            <td class="text-muted" style="font-size:.82rem">
+                                @(inv.PaidUtc.HasValue ? inv.PaidUtc.Value.ToString("MMM d, yyyy") : "—")
+                            </td>
+                            <td class="text-end pe-4">
+                                <div class="d-flex justify-content-end gap-1">
+                                    @if (inv.Status == InvoiceStatus.Unpaid)
+                                    {
+                                        <form method="post" asp-page-handler="MarkPaid"
+                                              asp-route-invoiceId="@inv.Id"
+                                              asp-route-tenantId="@Model.DrillTenantId">
+                                            @Html.AntiForgeryToken()
+                                            <button type="submit" class="btn btn-sm btn-success"
+                                                    style="border-radius:.4rem;font-size:.78rem"
+                                                    title="Mark as paid manually">
+                                                Mark Paid
+                                            </button>
+                                        </form>
+                                        <form method="post" asp-page-handler="VoidInvoice"
+                                              asp-route-invoiceId="@inv.Id"
+                                              asp-route-tenantId="@Model.DrillTenantId"
+                                              onsubmit="return confirm('Void invoice @inv.Number?')">
+                                            @Html.AntiForgeryToken()
+                                            <button type="submit" class="btn btn-sm btn-outline-secondary"
+                                                    style="border-radius:.4rem;font-size:.78rem">
+                                                Void
+                                            </button>
+                                        </form>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted" style="font-size:.78rem">—</span>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@* ═══════════════════════════ FILTER BAR ══════════════════════════════════ *@
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+    <span class="text-muted small me-1">Filter:</span>
+    @foreach (var (label, value, danger) in new (string, string?, bool)[]
+    {
+        ("All",         null,       false),
+        ("Past Due",    "pastdue",  true),
+        ("Unpaid",      "unpaid",   true),
+        ("Inactive",    "inactive", false),
+        ("No Plan",     "nosub",    false),
+    })
+    {
+        <a asp-page="/Admin/Billing"
+           asp-route-statusFilter="@value"
+           class="btn btn-sm @(Model.StatusFilter == value ? (danger ? "btn-danger" : "btn-primary") : "btn-outline-secondary")"
+           style="border-radius:99px;font-size:.8rem">
+            @label
+            @if (label == "Past Due" && Model.PastDueCount > 0)
+            {
+                <span class="badge bg-white text-danger ms-1">@Model.PastDueCount</span>
+            }
+            @if (label == "Unpaid" && Model.UnpaidInvoiceCount > 0)
+            {
+                <span class="badge bg-white text-danger ms-1">@Model.UnpaidInvoiceCount</span>
+            }
+        </a>
+    }
+    <span class="ms-auto text-muted small">@Model.Rows.Count result(s)</span>
+</div>
+
+@* ═══════════════════════════ TENANT TABLE ════════════════════════════════ *@
+<div class="bp-card overflow-hidden">
+    <table class="table table-hover align-middle mb-0">
+        <thead>
+            <tr>
+                <th class="ps-4" style="width:18%">Tenant</th>
+                <th style="width:14%">Plan</th>
+                <th style="width:9%">Cycle</th>
+                <th style="width:11%">Sub Status</th>
+                <th style="width:13%">Next Renewal</th>
+                <th style="width:8%">Invoices</th>
+                <th style="width:9%">Billed</th>
+                <th style="width:9%">Paid</th>
+                <th style="width:9%">Outstanding</th>
+                <th class="text-end pe-4" style="width:9%">Invoices</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!Model.Rows.Any())
+            {
+                <tr>
+                    <td colspan="10" class="text-center text-muted py-5">No tenants match this filter.</td>
+                </tr>
+            }
+            @foreach (var row in Model.Rows)
+            {
+                var isSelected = Model.DrillTenantId == row.TenantId;
+                <tr class="@(isSelected ? "table-active" : "")">
+                    <td class="ps-4">
+                        <div class="fw-medium" style="color:var(--page-text)">@row.TenantName</div>
+                        @if (!row.IsActive)
+                        {
+                            <span class="badge bg-secondary" style="font-size:.7rem">Inactive</span>
+                        }
+                    </td>
+                    <td>
+                        @if (row.PlanName is not null)
+                        {
+                            <span class="badge bg-primary bg-opacity-75">@row.PlanName</span>
+                        }
+                        else
+                        {
+                            <span class="text-muted small">No plan</span>
+                        }
+                    </td>
+                    <td>
+                        <span class="text-muted small">@(row.BillingCycle ?? "—")</span>
+                    </td>
+                    <td>
+                        @if (row.SubscriptionStatus == "Active")
+                        {
+                            <span class="badge bg-success">Active</span>
+                        }
+                        else if (row.SubscriptionStatus == "PastDue")
+                        {
+                            <span class="badge bg-danger">Past Due</span>
+                        }
+                        else if (row.SubscriptionStatus == "Cancelled")
+                        {
+                            <span class="badge bg-secondary">Cancelled</span>
+                        }
+                        else if (row.SubscriptionStatus == "Suspended")
+                        {
+                            <span class="badge bg-warning text-dark">Suspended</span>
+                        }
+                        else
+                        {
+                            <span class="text-muted small">—</span>
+                        }
+                    </td>
+                    <td style="font-size:.85rem">
+                        @if (row.NextRenewalDate.HasValue)
+                        {
+                            @if (row.NextRenewalDate.Value < DateTime.UtcNow.AddDays(7))
+                            {
+                                <span class="text-warning fw-semibold">@row.NextRenewalDate.Value.ToString("MMM d, yyyy")</span>
+                            }
+                            else
+                            {
+                                <span class="text-muted">@row.NextRenewalDate.Value.ToString("MMM d, yyyy")</span>
+                            }
+                        }
+                        else
+                        {
+                            <span class="text-muted">—</span>
+                        }
+                    </td>
+                    <td class="text-center">
+                        @if (row.TotalInvoices > 0)
+                        {
+                            <span class="badge bg-secondary bg-opacity-50 text-body">@row.TotalInvoices</span>
+                            @if (row.UnpaidInvoices > 0)
+                            {
+                                <span class="badge bg-danger ms-1">@row.UnpaidInvoices unpaid</span>
+                            }
+                        }
+                        else
+                        {
+                            <span class="text-muted small">—</span>
+                        }
+                    </td>
+                    <td class="fw-medium" style="font-size:.875rem">
+                        @(row.TotalBilled > 0 ? $"${row.TotalBilled:N2}" : "—")
+                    </td>
+                    <td class="text-success fw-medium" style="font-size:.875rem">
+                        @(row.TotalPaid > 0 ? $"${row.TotalPaid:N2}" : "—")
+                    </td>
+                    <td style="font-size:.875rem">
+                        @if (row.OutstandingBalance > 0)
+                        {
+                            <span class="text-danger fw-semibold">$@row.OutstandingBalance.ToString("N2")</span>
+                        }
+                        else
+                        {
+                            <span class="text-muted">—</span>
+                        }
+                    </td>
+                    <td class="text-end pe-4">
+                        @if (isSelected)
+                        {
+                            <a asp-page="/Admin/Billing" class="btn btn-sm btn-primary"
+                               style="border-radius:.4rem;font-size:.78rem">
+                                Hide
+                            </a>
+                        }
+                        else
+                        {
+                            <a asp-page="/Admin/Billing"
+                               asp-route-tenantId="@row.TenantId"
+                               asp-route-statusFilter="@Model.StatusFilter"
+                               class="btn btn-sm btn-outline-primary"
+                               style="border-radius:.4rem;font-size:.78rem">
+                                Invoices
+                            </a>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

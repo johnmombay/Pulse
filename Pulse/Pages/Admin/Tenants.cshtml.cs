@@ -18,9 +18,20 @@ public class TenantsModel : PageModel
     public List<TenantRow> Tenants { get; set; } = [];
     public SelectList PlanOptions { get; set; } = new SelectList(Enumerable.Empty<object>());
 
+    /// <summary>Plan pricing passed to the modal via JSON so JS can show live prices.</summary>
+    public List<PlanOption> PlanOptionsList { get; set; } = [];
+
     [TempData] public string? StatusMessage { get; set; }
 
     [BindProperty] public AssignPlanInput AssignPlan { get; set; } = new();
+
+    public class PlanOption
+    {
+        public int     Id           { get; init; }
+        public string  Name         { get; init; } = "";
+        public decimal MonthlyPrice { get; init; }
+        public decimal AnnualPrice  { get; init; }
+    }
 
     public class TenantRow
     {
@@ -31,6 +42,7 @@ public class TenantsModel : PageModel
         public bool   IsActive        { get; init; }
         public string CreatedUtc      { get; init; } = "";
         public string? PlanName       { get; init; }
+        public int?   CurrentPlanId   { get; init; }
         public string? SubscriptionStatus { get; init; }
         public string? BillingCycle   { get; init; }
     }
@@ -75,6 +87,10 @@ public class TenantsModel : PageModel
             sub.EndDate = DateTime.UtcNow;
         }
 
+        var nextRenewal = AssignPlan.BillingCycle == BillingCycle.Annual
+            ? DateTime.UtcNow.AddYears(1)
+            : DateTime.UtcNow.AddMonths(1);
+
         _db.TenantSubscriptions.Add(new TenantSubscription
         {
             TenantId             = AssignPlan.TenantId,
@@ -82,6 +98,7 @@ public class TenantsModel : PageModel
             BillingCycle         = AssignPlan.BillingCycle,
             Status               = SubscriptionStatus.Active,
             StartDate            = DateTime.UtcNow,
+            NextRenewalDate      = nextRenewal,
             // Snapshot limits so future plan edits don't affect this subscription
             SnapshotMaxUsers     = plan.MaxUsersPerTenant,
             SnapshotMaxDatabases = plan.MaxDatabases,
@@ -149,6 +166,7 @@ public class TenantsModel : PageModel
                     IsActive           = row.IsActive,
                     CreatedUtc         = row.CreatedUtc,
                     PlanName           = sub.SubscriptionPlan.Name,
+                    CurrentPlanId      = sub.SubscriptionPlanId,
                     SubscriptionStatus = sub.Status.ToString(),
                     BillingCycle       = sub.BillingCycle.ToString(),
                 };
@@ -161,5 +179,13 @@ public class TenantsModel : PageModel
             .ToListAsync();
 
         PlanOptions = new SelectList(plans, nameof(SubscriptionPlan.Id), nameof(SubscriptionPlan.Name));
+
+        PlanOptionsList = plans.Select(p => new PlanOption
+        {
+            Id           = p.Id,
+            Name         = p.Name,
+            MonthlyPrice = p.MonthlyPrice,
+            AnnualPrice  = p.AnnualPrice,
+        }).ToList();
     }
 }

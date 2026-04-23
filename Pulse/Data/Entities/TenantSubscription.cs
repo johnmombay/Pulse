@@ -12,9 +12,10 @@ public class TenantSubscription
     public BillingCycle        BillingCycle { get; set; }
     public SubscriptionStatus  Status       { get; set; } = SubscriptionStatus.Active;
 
-    public DateTime  StartDate   { get; set; } = DateTime.UtcNow;
-    public DateTime? EndDate     { get; set; }
-    public DateTime? TrialEndsAt { get; set; }
+    public DateTime  StartDate       { get; set; } = DateTime.UtcNow;
+    public DateTime? EndDate         { get; set; }
+    public DateTime? TrialEndsAt     { get; set; }
+    public DateTime  NextRenewalDate { get; set; } = DateTime.UtcNow.AddMonths(1);
 
     // Snapshot of limits at the time of subscription — prevents retroactive plan
     // edits from silently breaking a tenant's current entitlements.
@@ -26,4 +27,5 @@ public class TenantSubscription
     // Navigation
     public Tenant           Tenant           { get; set; } = null!;
     public SubscriptionPlan SubscriptionPlan { get; set; } = null!;
+    public ICollection<Invoice> Invoices     { get; set; } = [];
 }

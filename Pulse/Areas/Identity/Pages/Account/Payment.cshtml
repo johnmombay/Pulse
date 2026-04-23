@@ -23,6 +23,13 @@
             <strong>@Model.Subscription.BillingCycle</strong> billing cycle.
         </p>
 
+        @if (Model.ErrorMessage is not null)
+        {
+            <div class="alert alert-danger py-2 px-3 mb-3" style="border-radius:.55rem;font-size:.875rem">
+                @Model.ErrorMessage
+            </div>
+        }
+
         <div class="payment-summary mb-4">
             <div class="d-flex justify-content-between align-items-center">
                 <span style="font-size:.9rem;color:var(--page-text)">
@@ -35,11 +42,12 @@
         @if (Model.Gateway is null)
         {
             <div class="alert alert-warning" style="border-radius:.65rem;font-size:.875rem">
-                No payment gateway is currently configured.
-                Please contact support to complete your subscription.
+                <strong>Payment unavailable.</strong> We cannot process your payment at this time.
+                Our team has been notified and is working to resolve this.
+                Please choose a different plan or try again later.
             </div>
-            <a asp-page="SelectPlan" class="btn btn-outline-secondary w-100 mt-2" style="border-radius:.55rem">
-                ← Back to plans
+            <a asp-page="SelectPlan" class="btn btn-primary w-100 mt-2" style="border-radius:.55rem">
+                ← Choose a Different Plan
             </a>
         }
         else
@@ -52,8 +60,7 @@
                 }
             </p>
 
-            @* ── Gateway payment widget ──────────────────────────────────────────── *@
-            @* Replace this placeholder with the real SDK embed for Model.Gateway.Provider *@
+            @* ── Gateway payment widget — integrate gateway SDK for Model.Gateway.Provider ── *@
             <div id="payment-widget" class="mb-4 p-3"
                  style="border:1px dashed var(--surface-border);border-radius:.65rem;text-align:center;color:var(--sidebar-text-muted);font-size:.85rem">
                 [ @Model.Gateway.Provider payment widget — integrate gateway SDK here ]
@@ -68,7 +75,7 @@
             </form>
 
             <div class="text-center mt-3">
-                <a asp-page="SelectPlan" style="font-size:.8rem;color:var(--sidebar-text-muted)">← Change plan</a>
+                <a asp-page="SelectPlan" style="font-size:.8rem;color:var(--sidebar-text-muted)">← Choose a different plan</a>
             </div>
         }
 

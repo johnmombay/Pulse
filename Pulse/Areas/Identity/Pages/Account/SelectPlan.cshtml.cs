@@ -23,6 +23,8 @@ public class SelectPlanModel : PageModel
 
     public List<SubscriptionPlan> Plans { get; set; } = [];
 
+    [TempData] public string? ErrorMessage { get; set; }
+
     [BindProperty] public int    SelectedPlanId { get; set; }
     [BindProperty] public string BillingCycle   { get; set; } = "Monthly";
 
@@ -77,6 +79,10 @@ public class SelectPlanModel : PageModel
             .ToListAsync();
         _db.TenantSubscriptions.RemoveRange(existing);
 
+        var nextRenewal = cycle == Data.Entities.BillingCycle.Annual
+            ? DateTime.UtcNow.AddYears(1)
+            : DateTime.UtcNow.AddMonths(1);
+
         var subscription = new TenantSubscription
         {
             TenantId             = user.TenantId.Value,
@@ -84,6 +90,7 @@ public class SelectPlanModel : PageModel
             BillingCycle         = cycle,
             Status               = isFree ? SubscriptionStatus.Active : SubscriptionStatus.Pending,
             StartDate            = DateTime.UtcNow,
+            NextRenewalDate      = nextRenewal,
             SnapshotMaxUsers     = plan.MaxUsersPerTenant,
             SnapshotMaxDatabases = plan.MaxDatabases,
             SnapshotMaxAgents    = plan.MaxAgents,

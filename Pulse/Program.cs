@@ -163,6 +163,13 @@ builder.Services.AddTransient<WorkflowService>();
 builder.Services.AddTransient<WorkflowRunner>();
 builder.Services.AddTransient<WorkflowJob>();
 
+// ── Billing ───────────────────────────────────────────────────────────────────
+builder.Services.AddTransient<IInvoiceService, InvoiceService>();
+builder.Services.AddTransient<IInAppNotificationService, InAppNotificationService>();
+builder.Services.AddTransient<ISubscriptionService, SubscriptionService>();
+builder.Services.AddTransient<BillingEmailService>();
+builder.Services.AddTransient<SubscriptionRenewalJob>();
+
 // ChartGeneratorPlugin is instantiated per-execution inside AgentOrchestrationService
 // (needs the live sessionId and IHubContext — not suitable for DI registration)
 
@@ -225,6 +232,12 @@ using (var startupScope = app.Services.CreateScope())
 		.ToListAsync();
 	foreach (var t in tasks)
 		scheduler.RegisterHangfireJob(t);
+
+	// Register daily subscription renewal job
+	RecurringJob.AddOrUpdate<Pulse.Jobs.SubscriptionRenewalJob>(
+		"subscription-renewal",
+		job => job.ExecuteAsync(JobCancellationToken.Null),
+		Cron.Daily(1)); // runs at 01:00 UTC
 }
 
 // ── HTTP pipeline ─────────────────────────────────────────────────────────────

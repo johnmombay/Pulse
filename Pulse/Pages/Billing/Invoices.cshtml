@@ -1,0 +1,97 @@
+@page
+@model Pulse.Pages.Billing.InvoicesModel
+@using Pulse.Data.Entities
+@{
+    ViewData["Title"] = "My Invoices";
+}
+
+@if (!string.IsNullOrEmpty(Model.StatusMessage))
+{
+    <div class="alert alert-success alert-dismissible mb-4" role="alert">
+        @Model.StatusMessage
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+}
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h2 class="mb-0" style="font-size:1.35rem;font-weight:700;color:var(--page-text)">Invoices</h2>
+        <p class="text-muted small mb-0">Your subscription billing history</p>
+    </div>
+</div>
+
+<div class="bp-card overflow-hidden">
+    <table class="table table-hover align-middle mb-0">
+        <thead>
+            <tr>
+                <th class="ps-4" style="width:18%">Invoice #</th>
+                <th style="width:22%">Period</th>
+                <th style="width:12%">Cycle</th>
+                <th style="width:12%">Amount</th>
+                <th style="width:10%">Status</th>
+                <th style="width:14%">Due Date</th>
+                <th style="width:12%">Issued</th>
+                <th class="text-end pe-4" style="width:10%">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!Model.Invoices.Any())
+            {
+                <tr>
+                    <td colspan="8" class="text-center text-muted py-5">No invoices yet.</td>
+                </tr>
+            }
+            @foreach (var inv in Model.Invoices)
+            {
+                <tr>
+                    <td class="ps-4 fw-medium">@inv.Number</td>
+                    <td class="text-muted" style="font-size:.85rem">
+                        @inv.PeriodStart.ToString("MMM d, yyyy") – @inv.PeriodEnd.ToString("MMM d, yyyy")
+                    </td>
+                    <td>
+                        <span class="badge bg-secondary bg-opacity-50 text-body">@inv.BillingCycle</span>
+                    </td>
+                    <td class="fw-semibold">$@inv.Amount.ToString("0.00")</td>
+                    <td>
+                        @if (inv.Status == InvoiceStatus.Paid)
+                        {
+                            <span class="badge bg-success">Paid</span>
+                        }
+                        else if (inv.Status == InvoiceStatus.Unpaid)
+                        {
+                            <span class="badge bg-danger">Unpaid</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">Void</span>
+                        }
+                    </td>
+                    <td class="text-muted" style="font-size:.85rem">
+                        @if (inv.Status == InvoiceStatus.Unpaid && inv.DueDate < DateTime.UtcNow)
+                        {
+                            <span class="text-danger fw-semibold">@inv.DueDate.ToString("MMM d, yyyy")</span>
+                        }
+                        else
+                        {
+                            @inv.DueDate.ToString("MMM d, yyyy")
+                        }
+                    </td>
+                    <td class="text-muted" style="font-size:.85rem">@inv.IssuedUtc.ToString("MMM d, yyyy")</td>
+                    <td class="text-end pe-4">
+                        @if (inv.Status == InvoiceStatus.Unpaid)
+                        {
+                            <a asp-page="/Billing/Pay" asp-route-invoiceId="@inv.Id"
+                               class="btn btn-sm btn-primary" style="border-radius:.4rem">
+                                Pay
+                            </a>
+                        }
+                        else if (inv.Status == InvoiceStatus.Paid)
+                        {
+                            <span class="text-muted small">✓ Paid @inv.PaidUtc?.ToString("MMM d")</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
