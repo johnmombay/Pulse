@@ -12,7 +12,7 @@ namespace Pulse.Services;
 
 /// <summary>
 /// Core agent orchestration: reads live settings from LlmSettingsService, loads
-/// enabled MCP servers as Semantic Kernel plugins, then streams the Gemini response
+/// enabled MCP servers as Semantic Kernel plugins, then streams the LLM response
 /// back to connected clients via SignalR.
 ///
 /// When <see cref="LlmSettingsModel.AgentDefinitions"/> is non-empty the orchestrator
@@ -43,7 +43,7 @@ public sealed class AgentOrchestrationService(
     ILogger<AgentOrchestrationService> logger)
 {
     /// <summary>
-    /// Returns <c>true</c> for HTTP statuses Gemini emits transiently and that are safe
+    /// Returns <c>true</c> for HTTP statuses the LLM provider emits transiently and that are safe
     /// to retry when no response chunks have been streamed yet:
     /// 429 (quota), 502 (bad gateway), 503 (model overloaded), 504 (gateway timeout).
     /// </summary>
@@ -54,11 +54,11 @@ public sealed class AgentOrchestrationService(
         System.Net.HttpStatusCode.GatewayTimeout;
 
     /// <summary>
-    /// Pulls Gemini's <c>error.message</c> out of the JSON response body when present
-    /// (Google's payload looks like <c>{"error":{"code":400,"message":"...","status":"..."}}</c>).
+    /// Pulls the provider's <c>error.message</c> out of the JSON response body when present
+    /// (Payload looks like <c>{"error":{"code":400,"message":"...","status":"..."}}</c>).
     /// Falls back to the raw body, then to the exception message.
     /// </summary>
-    private static string ExtractGeminiError(HttpOperationException ex)
+    private static string ExtractLlmError(HttpOperationException ex)
     {
         var body = ex.ResponseContent;
         if (string.IsNullOrWhiteSpace(body)) return ex.Message;
@@ -85,36 +85,35 @@ public sealed class AgentOrchestrationService(
 
         if (ex is HttpOperationException hoe)
         {
-            var detail = ExtractGeminiError(hoe);
+            var detail = ExtractLlmError(hoe);
             var prefix = hoe.StatusCode switch
             {
                 System.Net.HttpStatusCode.BadRequest =>
-                    $"Gemini rejected the request (400) for model '{modelId}'. " +
-                    "Most common cause: the model name is not valid for the selected API version " +
-                    "(try toggling Settings \u2192 LLM \u2192 Gemini API Version between v1 and v1beta).",
+                    $"LLM provider rejected the request (400) for model '{modelId}'. " +
+                    "Most common cause: check that your model ID is correct.",
                 System.Net.HttpStatusCode.Unauthorized =>
-                    "Gemini rejected the API key (401). Verify the key in Settings \u2192 LLM.",
+                    "LLM provider rejected the API key (401). Check your OpenRouter API key in Settings \u2192 LLM.",
                 System.Net.HttpStatusCode.Forbidden =>
-                    $"Gemini denied the request (403) for model '{modelId}'. " +
-                    "Either the model is not enabled for your API key's Google project (common for *-preview models), " +
-                    "or the key has no access to this model.",
+                    $"LLM provider denied the request (403) for model '{modelId}'. " +
+                    "Check that your API key has access to this model on OpenRouter.",
                 System.Net.HttpStatusCode.NotFound =>
-                    $"Gemini does not recognize model '{modelId}' (404). " +
-                    "Check the spelling in Settings \u2192 LLM \u2192 Model ID, or switch the API Version.",
+                    $"OpenRouter does not recognize model '{modelId}' (404). " +
+                    "Check the spelling in Settings \u2192 LLM \u2192 Model ID.",
                 System.Net.HttpStatusCode.TooManyRequests =>
-                    "All Gemini API keys are currently rate-limited. Try again in a minute, or add more keys in Settings \u2192 LLM.",
-                _ => $"Gemini returned HTTP {(int?)hoe.StatusCode}."
+                    "OpenRouter API key is rate-limited. Try again in a minute, or add more keys in Settings \u2192 LLM.",
+                _ => $"LLM provider returned HTTP {(int?)hoe.StatusCode}."
             };
 
-            return $"{prefix} Details from Google: {detail}";
+            return $"{prefix} Details: {detail}";
         }
 
         return ex.Message;
     }
 
     /// <summary>
-    /// Best-effort parse of Gemini's <c>retryDelay</c> hint
-    /// the JSON error payload surfaced on <see cref="HttpOperationException.ResponseContent"/>.
+    /// Best-effort parse of the provider's <c>retryDelay</c> hint from JSON body
+    /// (fallback — OpenRouter uses Retry-After header) surfaced on
+    /// <see cref="HttpOperationException.ResponseContent"/>.
     /// Capped at 5 minutes to avoid pathological waits.
     /// </summary>
     private static TimeSpan? TryParseRetryAfter(HttpOperationException ex)
@@ -362,7 +361,7 @@ public sealed class AgentOrchestrationService(
                                   ?? TimeSpan.FromMilliseconds(750 * Math.Pow(2, attempt - 1));
 
                     logger.LogWarning(
-                        "Session {SessionId}: Gemini {Status} on attempt {Attempt}/{Max}. " +
+                        "Session {SessionId}: LLM {Status} on attempt {Attempt}/{Max}. " +
                         "Retrying after {Backoff}ms.",
                         sessionId, (int)ex.StatusCode!, attempt, maxAttempts, backoff.TotalMilliseconds);
 
@@ -373,12 +372,12 @@ public sealed class AgentOrchestrationService(
                     ex.StatusCode == System.Net.HttpStatusCode.NotFound &&
                     !streamedAnything)
                 {
-                    // 404 = model unknown to the Gemini API (or unavailable to this key's project).
+                    // 404 = model unknown to OpenRouter (or unavailable to this key).
                     // This is not retryable — bail with an actionable message.
                     throw new InvalidOperationException(
-                        $"Gemini returned 404 for model '{modelId}'. The model name is invalid, deprecated, " +
+                        $"OpenRouter returned 404 for model '{modelId}'. The model name is invalid, deprecated, " +
                         $"or not available to your API key. Open Settings \u2192 LLM and pick a supported " +
-                        $"model (e.g. 'gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro').", ex);
+                        $"model (e.g. openai/gpt-4o, anthropic/claude-3-5-sonnet, meta-llama/llama-3.1-405b).", ex);
                 }
             }
 

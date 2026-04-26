@@ -6,7 +6,7 @@ namespace Pulse.Services;
 
 /// <summary>
 /// Builds a <see cref="KernelPlugin"/> that exposes one <see cref="KernelFunction"/> per
-/// enabled specialist agent. The orchestrator uses Gemini's auto-invoke to route tasks to
+/// enabled specialist agent. The orchestrator uses the LLM's auto-invoke to route tasks to
 /// the right specialist via <c>DelegateTo{Name}(task)</c>.
 ///
 /// NOT DI-registered — created per-turn via <see cref="Build"/>.
@@ -38,7 +38,7 @@ public static class AgentDelegationPlugin
     {
         var fnName = "DelegateTo" + SanitizeName(agent.Name);
 
-        // Description drives Gemini's routing decision — include system-prompt excerpt so
+        // Description drives the LLM's routing decision — include system-prompt excerpt so
         // the model understands what each specialist is best at.
         var excerpt = agent.SystemPrompt.Length > 200
             ? agent.SystemPrompt[..200] + "…"
