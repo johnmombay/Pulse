@@ -10,9 +10,6 @@ public class LlmSettingsModel
     [Required(ErrorMessage = "Model ID is required.")]
     public string ModelId { get; set; } = default!;
 
-    /// <summary>Google Gemini API version: "V1Beta" (default) or "V1".</summary>
-    public string ApiVersion { get; set; } = "V1Beta";
-
     public List<string> ApiKeys { get; set; } = [];
 
     public List<McpServerConfig> McpServers { get; set; } = [];
