@@ -48,9 +48,7 @@ public sealed class GlobalLlmSettingsService
         }
         else
         {
-            existing.ModelId    = settings.ModelId;
-            existing.ApiVersion = string.IsNullOrWhiteSpace(settings.ApiVersion)
-                ? "V1Beta" : settings.ApiVersion;
+            existing.ModelId = settings.ModelId;
         }
         await db.SaveChangesAsync();
         _cache.Remove(CacheKey);

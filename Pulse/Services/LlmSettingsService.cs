@@ -39,9 +39,9 @@ public sealed class LlmSettingsService
     /// <summary>
     /// Returns the cached <see cref="LlmSettingsModel"/> for the given tenant.
     /// Loads from DB on first call; subsequent calls return the cached copy.
-    /// <see cref="LlmSettingsModel.ModelId"/> and <see cref="LlmSettingsModel.ApiVersion"/>
-    /// are always overwritten with the global values managed by SuperAdmin, so every
-    /// tenant uses the same model regardless of any stale per-tenant value on disk.
+    /// <see cref="LlmSettingsModel.ModelId"/> is always overwritten with the global value
+    /// managed by SuperAdmin, so every tenant uses the same model regardless of any
+    /// stale per-tenant value on disk.
     /// </summary>
     public async Task<LlmSettingsModel> GetAsync(Guid tenantId)
     {
@@ -57,10 +57,9 @@ public sealed class LlmSettingsService
             _cache.Set(key, model, CacheOptions);
         }
 
-        // Global model + API version shadow any per-tenant row value.
+        // Global model shadows any per-tenant row value.
         var global = await _globalLlm.GetAsync();
-        model.ModelId    = global.ModelId ?? string.Empty;
-        model.ApiVersion = string.IsNullOrWhiteSpace(global.ApiVersion) ? "V1Beta" : global.ApiVersion;
+        model.ModelId = global.ModelId ?? string.Empty;
         return model;
     }
 
@@ -393,7 +392,6 @@ public sealed class LlmSettingsService
             {
                 AppName          = row?.AppName      ?? "Pulse",
                 ModelId          = row?.ModelId      ?? "",
-                ApiVersion       = string.IsNullOrWhiteSpace(row?.ApiVersion) ? "V1Beta" : row!.ApiVersion,
                 LogoFileName     = row?.LogoFileName,
                 LogoVersion      = row?.LogoVersion,
                 TerminalSettings = row?.Terminal     ?? new(),
@@ -423,7 +421,6 @@ public sealed class LlmSettingsService
     {
         row.AppName      = m.AppName;
         row.ModelId      = m.ModelId;
-        row.ApiVersion   = string.IsNullOrWhiteSpace(m.ApiVersion) ? "V1Beta" : m.ApiVersion;
         row.LogoFileName = m.LogoFileName;
         row.LogoVersion  = m.LogoVersion;
         row.Terminal     = Clone(m.TerminalSettings ?? new());

@@ -318,7 +318,6 @@ namespace Pulse.Data
 				e.Property(s => s.Id).ValueGeneratedNever();
 				e.ToTable(t => t.HasCheckConstraint("CK_GlobalLlmSettings_Singleton", "[Id] = 1"));
 				e.Property(s => s.ModelId).HasMaxLength(200);
-				e.Property(s => s.ApiVersion).HasMaxLength(20);
 			});
 
 			builder.Entity<LlmUsageEntity>(e =>
