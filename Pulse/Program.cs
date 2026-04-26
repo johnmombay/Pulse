@@ -101,7 +101,7 @@ builder.Services.AddSingleton<GlobalAgentMailSettingsService>();
 builder.Services.AddSingleton<GlobalLlmSettingsService>();
 builder.Services.AddSingleton<PaymentGatewayService>();
 builder.Services.AddSingleton<LlmUsageService>();
-builder.Services.AddSingleton<GeminiKeyRotationService>();
+builder.Services.AddSingleton<OpenRouterService>();
 builder.Services.AddScoped<ISubscriptionLimitService, SubscriptionLimitService>();
 builder.Services.AddSingleton<ChatHistoryService>();
 builder.Services.AddSingleton<GeminiEmbeddingService>();
