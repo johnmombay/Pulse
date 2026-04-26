@@ -1,6 +1,6 @@
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
-using Microsoft.SemanticKernel.Connectors.Google;
+using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Pulse.Infrastructure;
 
 namespace Pulse.Services;
@@ -11,7 +11,7 @@ namespace Pulse.Services;
 /// the full plugin stack (database, terminal, AgentMail, etc.) from a background job.
 /// </summary>
 public sealed class ScheduledAgentRunner(
-    GeminiKeyRotationService keyRotation,
+    OpenRouterService openRouter,
     LlmSettingsService llmSettings,
     ITenantContext tenantContext,
     DatabaseToolsPlugin databaseToolsPlugin,
@@ -30,12 +30,13 @@ public sealed class ScheduledAgentRunner(
         try
         {
             var settings = await llmSettings.GetAsync(tenantContext.TenantId ?? Guid.Empty);
-            await keyRotation.EnforceRateLimitAsync(ct);
-            var apiKey = keyRotation.GetNextKey(settings.ApiKeys);
+            var apiKey = openRouter.GetApiKey(settings.ApiKeys);
 
+#pragma warning disable SKEXP0010
             var kernel = Kernel.CreateBuilder()
-                .AddGoogleAIGeminiChatCompletion(settings.ModelId, apiKey)
+                .AddOpenAIChatCompletion(settings.ModelId, new Uri(OpenRouterService.BaseUrl), apiKey)
                 .Build();
+#pragma warning restore SKEXP0010
 
             // Database tools
             var enabledConns = (settings.DatabaseConnections ?? [])
@@ -74,12 +75,12 @@ public sealed class ScheduledAgentRunner(
                 "Be specific — include numbers, names, and key findings.");
             history.AddUserMessage(instructions);
 
-            var executionSettings = new GeminiPromptExecutionSettings
+            var executionSettings = new OpenAIPromptExecutionSettings
             {
                 MaxTokens        = 4096,
                 Temperature      = 0.3,
                 ToolCallBehavior = kernel.Plugins.Count > 0
-                    ? GeminiToolCallBehavior.AutoInvokeKernelFunctions
+                    ? ToolCallBehavior.AutoInvokeKernelFunctions
                     : null
             };
 

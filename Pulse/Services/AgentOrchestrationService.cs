@@ -4,7 +4,7 @@ using Pulse.Models;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
-using Microsoft.SemanticKernel.Connectors.Google;
+using Microsoft.SemanticKernel.Connectors.OpenAI;
 using ModelContextProtocol.Client;
 using System.Text;
 
@@ -22,7 +22,7 @@ namespace Pulse.Services;
 /// all-plugins-loaded monolithic behaviour.
 /// </summary>
 public sealed class AgentOrchestrationService(
-    GeminiKeyRotationService keyRotation,
+    OpenRouterService openRouter,
     ChatHistoryService chatHistory,
     LlmSettingsService llmSettings,
     ITenantContext tenantContext,
@@ -42,11 +42,6 @@ public sealed class AgentOrchestrationService(
     IHubContext<AgentHub> hubContext,
     ILogger<AgentOrchestrationService> logger)
 {
-    private static GoogleAIVersion ParseApiVersion(string? value) =>
-        string.Equals(value, "V1", StringComparison.OrdinalIgnoreCase)
-            ? GoogleAIVersion.V1
-            : GoogleAIVersion.V1_Beta;
-
     /// <summary>
     /// Returns <c>true</c> for HTTP statuses Gemini emits transiently and that are safe
     /// to retry when no response chunks have been streamed yet:
@@ -272,11 +267,12 @@ public sealed class AgentOrchestrationService(
                 foreach (var c in mcpClients) await c.DisposeAsync();
                 mcpClients = [];
 
-                await keyRotation.EnforceRateLimitAsync(cancellationToken);
-                var apiKey = keyRotation.GetNextKey(settings.ApiKeys);
+                var apiKey = openRouter.GetApiKey(settings.ApiKeys);
 
+#pragma warning disable SKEXP0010
                 var kernelBuilder = Kernel.CreateBuilder()
-                    .AddGoogleAIGeminiChatCompletion(modelId, apiKey, apiVersion: ParseApiVersion(settings.ApiVersion));
+                    .AddOpenAIChatCompletion(modelId, new Uri(OpenRouterService.BaseUrl), apiKey);
+#pragma warning restore SKEXP0010
                 var kernel = kernelBuilder.Build();
 
                 // ── Plugin loading ────────────────────────────────────────────
@@ -310,12 +306,12 @@ public sealed class AgentOrchestrationService(
 
                 var chatService = kernel.GetRequiredService<IChatCompletionService>();
 
-                var executionSettings = new GeminiPromptExecutionSettings
+                var executionSettings = new OpenAIPromptExecutionSettings
                 {
                     MaxTokens = 8192,
                     Temperature = 0.7,
                     ToolCallBehavior = kernel.Plugins.Count > 0
-                        ? GeminiToolCallBehavior.AutoInvokeKernelFunctions
+                        ? ToolCallBehavior.AutoInvokeKernelFunctions
                         : null
                 };
 
@@ -361,16 +357,7 @@ public sealed class AgentOrchestrationService(
                     !streamedAnything &&
                     attempt < maxAttempts)
                 {
-                    // 429 / 503 / 502 / 504 are transient. Park the key only on 429
-                    // (Google quota); for 5xx the model itself is overloaded so a
-                    // different key won't help — just back off and retry.
-                    if (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
-                    {
-                        var cooldown = TryParseRetryAfter(ex) ?? TimeSpan.FromSeconds(60);
-                        keyRotation.MarkRateLimited(apiKey, cooldown);
-                    }
-
-                    // Honor Gemini's retryDelay hint when present, else exponential backoff.
+                    // Honor the retry-after hint when present, else exponential backoff.
                     var backoff = TryParseRetryAfter(ex)
                                   ?? TimeSpan.FromMilliseconds(750 * Math.Pow(2, attempt - 1));
 

@@ -6,7 +6,7 @@ using Pulse.Models;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
-using Microsoft.SemanticKernel.Connectors.Google;
+using Microsoft.SemanticKernel.Connectors.OpenAI;
 using ModelContextProtocol.Client;
 using System.Text;
 
@@ -19,7 +19,7 @@ namespace Pulse.Services;
 /// stateless delegates that return their accumulated response text to the orchestrator.
 /// </summary>
 public sealed class SpecializedAgentRunner(
-    GeminiKeyRotationService keyRotation,
+    OpenRouterService openRouter,
     LlmSettingsService llmSettings,
     ITenantContext tenantContext,
     McpService mcpService,
@@ -59,15 +59,16 @@ public sealed class SpecializedAgentRunner(
             var settings = await llmSettings.GetAsync(tenantId);
             var agentMail = await agentMailSettings.GetAsync();
 
-            await keyRotation.EnforceRateLimitAsync(ct);
-            var apiKey = keyRotation.GetNextKey(settings.ApiKeys);
+            var apiKey = openRouter.GetApiKey(settings.ApiKeys);
 
             // Always use the global LLM Configuration model. Per-agent ModelId overrides
             // are intentionally ignored — Settings → LLM → Model ID is the single source of truth.
             var modelId = settings.ModelId;
 
+#pragma warning disable SKEXP0010
             var kernelBuilder = Kernel.CreateBuilder()
-                .AddGoogleAIGeminiChatCompletion(modelId, apiKey, apiVersion: ParseApiVersion(settings.ApiVersion));
+                .AddOpenAIChatCompletion(modelId, new Uri(OpenRouterService.BaseUrl), apiKey);
+#pragma warning restore SKEXP0010
             var kernel = kernelBuilder.Build();
 
             var allowedKeys = agent.AllowedPluginKeys ?? [];
@@ -236,12 +237,12 @@ public sealed class SpecializedAgentRunner(
 
             // ── Stream response ───────────────────────────────────────────────
             var chatService = kernel.GetRequiredService<IChatCompletionService>();
-            var execSettings = new GeminiPromptExecutionSettings
+            var execSettings = new OpenAIPromptExecutionSettings
             {
                 MaxTokens = 8192,
                 Temperature = 0.7,
                 ToolCallBehavior = kernel.Plugins.Count > 0
-                    ? GeminiToolCallBehavior.AutoInvokeKernelFunctions
+                    ? ToolCallBehavior.AutoInvokeKernelFunctions
                     : null
             };
 
@@ -305,8 +306,4 @@ public sealed class SpecializedAgentRunner(
         }
     }
 
-    private static GoogleAIVersion ParseApiVersion(string? value) =>
-        string.Equals(value, "V1", StringComparison.OrdinalIgnoreCase)
-            ? GoogleAIVersion.V1
-            : GoogleAIVersion.V1_Beta;
 }
