@@ -15,6 +15,7 @@ public sealed class OpenRouterService
     /// </summary>
     public string GetApiKey(IReadOnlyList<string> keys)
     {
+        ArgumentNullException.ThrowIfNull(keys);
         var key = keys.FirstOrDefault(k => !string.IsNullOrWhiteSpace(k));
         if (key is null)
             throw new InvalidOperationException(
