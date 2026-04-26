@@ -294,18 +294,6 @@
                 </div>
             </div>
 
-            <div class="mb-4">
-                <label asp-for="Input.ApiVersion" class="form-label fw-semibold">Gemini API Version</label>
-                <select asp-for="Input.ApiVersion" class="form-select">
-                    <option value="V1Beta">v1beta (default — most models, including previews)</option>
-                    <option value="V1">v1 (stable GA endpoint)</option>
-                </select>
-                <div class="form-text">
-                    Switch to <code>v1</code> only if Google explicitly states the model lives there.
-                    Most preview / 3.x models are still served on <code>v1beta</code>.
-                </div>
-            </div>
-
             <hr class="my-3" />
 
             <div class="mb-2">

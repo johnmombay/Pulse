@@ -7,6 +7,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Net.Http.Headers;
+using System.Text.Json;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Pulse.Pages;
 
@@ -110,9 +114,8 @@ public class SettingsModel(
     public async Task OnGetAsync()
     {
         var current = await settingsService.GetAsync(TenantId);
-        Input.ModelId    = current.ModelId;
-        Input.ApiVersion = string.IsNullOrWhiteSpace(current.ApiVersion) ? "V1Beta" : current.ApiVersion;
-        Input.ApiKeys    = current.ApiKeys.Count > 0 ? [.. current.ApiKeys] : [""];
+        Input.ModelId = current.ModelId;
+        Input.ApiKeys = current.ApiKeys.Count > 0 ? [.. current.ApiKeys] : [""];
         AppName          = current.AppName ?? "Pulse";
         McpServers       = current.McpServers   ?? [];
         Skills           = current.Skills       ?? [];
@@ -189,21 +192,16 @@ public class SettingsModel(
             .Where(k => k.Length > 0)
             .ToList();
 
-        // ModelId + ApiVersion are stored globally and shared by every tenant.
         await globalLlm.SaveAsync(new Data.Entities.GlobalLlmSettings
         {
-            ModelId    = Input.ModelId.Trim(),
-            ApiVersion = string.IsNullOrWhiteSpace(Input.ApiVersion) ? "V1Beta" : Input.ApiVersion.Trim(),
+            ModelId = Input.ModelId.Trim(),
         });
 
         var current = await settingsService.GetAsync(TenantId);
         await settingsService.SaveAsync(TenantId, new LlmSettingsModel
         {
             AppName             = current.AppName ?? "Pulse",
-            // ModelId / ApiVersion intentionally left blank — LlmSettingsService.GetAsync
-            // shadows them with the global values managed by SuperAdmin.
             ModelId             = string.Empty,
-            ApiVersion          = "V1Beta",
             ApiKeys             = cleanKeys,
             McpServers          = current.McpServers          ?? [],
             Skills              = current.Skills              ?? [],
@@ -219,6 +217,91 @@ public class SettingsModel(
 
         TempData["SaveSuccess"] = true;
         return RedirectToPage();
+    }
+
+    // ── OpenRouter: fetch model list (SuperAdmin only) ────────────────────────
+    private static readonly IMemoryCache _openRouterModelCache =
+        new MemoryCache(new MemoryCacheOptions());
+
+    public async Task<IActionResult> OnGetOpenRouterModelsAsync([FromQuery] string apiKey)
+    {
+        if (!User.IsInRole("SuperAdmin")) return Forbid();
+        if (string.IsNullOrWhiteSpace(apiKey))
+            return new JsonResult(new { error = "API key is required." }) { StatusCode = 400 };
+
+        var cacheKey = "OR_" + Convert.ToHexString(
+            SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(apiKey)))[..16];
+
+        if (_openRouterModelCache.TryGetValue(cacheKey, out object? cached))
+            return new JsonResult(cached);
+
+        using var http = new HttpClient();
+        http.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", apiKey);
+        http.Timeout = TimeSpan.FromSeconds(15);
+
+        HttpResponseMessage resp;
+        try
+        {
+            resp = await http.GetAsync("https://openrouter.ai/api/v1/models");
+        }
+        catch (Exception ex)
+        {
+            return new JsonResult(new { error = $"Could not reach OpenRouter: {ex.Message}" })
+                { StatusCode = 502 };
+        }
+
+        if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            return new JsonResult(new { error = "Invalid API key." }) { StatusCode = 401 };
+
+        if (!resp.IsSuccessStatusCode)
+            return new JsonResult(new { error = $"OpenRouter returned {(int)resp.StatusCode}." })
+                { StatusCode = 502 };
+
+        var json = await resp.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(json);
+
+        var models = new List<object>();
+        foreach (var item in doc.RootElement.GetProperty("data").EnumerateArray())
+        {
+            var id   = item.GetProperty("id").GetString() ?? "";
+            var name = item.TryGetProperty("name", out var n) ? n.GetString() ?? id : id;
+            var provider = id.Contains('/') ? id[..id.IndexOf('/')] : id;
+
+            decimal inputCost  = 0m;
+            decimal outputCost = 0m;
+            if (item.TryGetProperty("pricing", out var pricing))
+            {
+                if (pricing.TryGetProperty("prompt", out var p) &&
+                    decimal.TryParse(p.GetString(), System.Globalization.NumberStyles.Any,
+                        System.Globalization.CultureInfo.InvariantCulture, out var pv))
+                    inputCost = pv * 1_000_000m;
+
+                if (pricing.TryGetProperty("completion", out var c) &&
+                    decimal.TryParse(c.GetString(), System.Globalization.NumberStyles.Any,
+                        System.Globalization.CultureInfo.InvariantCulture, out var cv))
+                    outputCost = cv * 1_000_000m;
+            }
+
+            models.Add(new
+            {
+                id,
+                name,
+                provider,
+                inputCost  = Math.Round(inputCost,  4),
+                outputCost = Math.Round(outputCost, 4),
+                isFree     = inputCost == 0m && outputCost == 0m
+            });
+        }
+
+        if (models.Count == 0)
+            return new JsonResult(new { error = "No models found for this key." }) { StatusCode = 200 };
+
+        var result = new { models };
+        _openRouterModelCache.Set(cacheKey, result,
+            new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1) });
+
+        return new JsonResult(result);
     }
 
     // ── MCP: add or update (called by modal via fetch/AJAX) ──────────────────
@@ -1077,9 +1160,6 @@ public class SettingsModel(
     {
         [Required(ErrorMessage = "Model ID is required.")]
         public string ModelId { get; set; } = "";
-
-        /// <summary>Google Gemini API version: "V1Beta" or "V1".</summary>
-        public string ApiVersion { get; set; } = "V1Beta";
 
         public List<string> ApiKeys { get; set; } = [];
     }
