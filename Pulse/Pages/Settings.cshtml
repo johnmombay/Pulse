@@ -274,50 +274,63 @@
 <div id="tab-pane-llm" class="settings-tab-pane pt-4">
 <form method="post" id="llmForm" novalidate>
     @Html.AntiForgeryToken()
+    @* Hidden field — JS writes the selected model ID here before save *@
+    <input type="hidden" asp-for="Input.ModelId" id="llmModelIdHidden" />
+
     <div class="card shadow-sm mb-4">
         <div class="card-header bg-white py-3">
-            <div class="settings-section-header">🤖 LLM Configuration</div>
+            <div class="settings-section-header">🤖 OpenRouter Configuration</div>
         </div>
         <div class="card-body">
 
+            @* ── API Key ───────────────────────────────────────────────────── *@
             <div class="mb-4">
-                <label asp-for="Input.ModelId" class="form-label fw-semibold">Model ID</label>
-                <input asp-for="Input.ModelId" class="form-control"
-                       placeholder="e.g. gemini-2.0-flash" autocomplete="off" spellcheck="false" />
-                <span asp-validation-for="Input.ModelId" class="text-danger small"></span>
+                <label class="form-label fw-semibold">API Key</label>
+                <div class="input-group">
+                    <input type="password" id="orApiKey"
+                           name="Input.ApiKeys[0]"
+                           value="@(Model.Input.ApiKeys.Count > 0 ? Model.Input.ApiKeys[0] : "")"
+                           class="form-control" placeholder="sk-or-…"
+                           spellcheck="false" autocomplete="off" />
+                    <button type="button" class="btn btn-outline-secondary" id="orKeyToggle" title="Show/hide">👁</button>
+                </div>
+                <div id="orKeyStatus" class="form-text mt-1"></div>
                 <div class="form-text">
-                    Enter any Gemini model ID supported by your API key
-                    (e.g. <code>gemini-2.0-flash</code>, <code>gemini-2.5-flash</code>, <code>gemini-2.5-pro</code>).
-                    This value is sent to Google as-is.
-                    <br />
+                    Your <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">OpenRouter API key</a>.
                     <strong>Global setting:</strong> applies to every tenant.
                 </div>
             </div>
 
-            <hr class="my-3" />
+            @* ── Model Picker (shown after models load) ─────────────────── *@
+            <div id="orModelSection" class="@(Model.Input.ApiKeys.Count > 0 && !string.IsNullOrWhiteSpace(Model.Input.ApiKeys[0]) ? "" : "d-none")">
+                <hr class="my-3" />
+                <label class="form-label fw-semibold">Model</label>
 
-            <div class="mb-2">
-                <label class="form-label fw-semibold mb-0">API Keys</label>
-                <div class="text-muted small mt-1 mb-3">
-                    Keys rotate in round-robin after every call. A 5-second rate-limit gap is enforced automatically.<br />
-                    <span class="info-badge mt-2">
-                        ℹ️ Stored in <code>llm-settings.json</code>. Use User Secrets or Azure Key Vault for production.
-                    </span>
-                </div>
-                <div id="keysContainer">
-                    @for (int i = 0; i < Model.Input.ApiKeys.Count; i++)
-                    {
-                        <div class="key-row" data-index="@i">
-                            <span class="key-num">#@(i + 1)</span>
-                            <input type="password" name="Input.ApiKeys[@i]" value="@Model.Input.ApiKeys[i]"
-                                   class="form-control" placeholder="AIza…" spellcheck="false" autocomplete="off" />
-                            <button type="button" class="btn btn-outline-secondary btn-icon btn-toggle-vis" title="Show/hide">👁</button>
-                            <button type="button" class="btn btn-outline-danger btn-icon btn-remove-key" title="Remove">✕</button>
+                @* Filter bar *@
+                <div class="row g-2 mb-2">
+                    <div class="col-md-5">
+                        <input type="text" id="orModelSearch" class="form-control form-control-sm"
+                               placeholder="Search models…" autocomplete="off" />
+                    </div>
+                    <div class="col-md-4">
+                        <select id="orProviderFilter" class="form-select form-select-sm">
+                            <option value="">All providers</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 d-flex align-items-center">
+                        <div class="form-check mb-0">
+                            <input class="form-check-input" type="checkbox" id="orFreeOnly" />
+                            <label class="form-check-label small" for="orFreeOnly">Free only</label>
                         </div>
-                    }
+                    </div>
                 </div>
-                <button type="button" id="addKeyBtn" class="btn btn-outline-primary btn-sm mt-2">➕ Add Key</button>
+
+                @* Model list *@
+                <select id="orModelList" class="form-select" size="8" style="font-family:monospace;font-size:.82rem;">
+                </select>
+                <div class="form-text mt-1" id="orModelCount"></div>
             </div>
+
         </div>
         <div class="card-footer bg-white border-top d-flex justify-content-end py-3">
             <button type="submit" class="btn btn-primary px-4" id="llmSaveBtn">
@@ -1424,16 +1437,10 @@
                             <label asp-for="AgentDef.ModelId" class="form-label fw-semibold">
                                 Model Override <span class="text-muted fw-normal small">(optional)</span>
                             </label>
-                            <input asp-for="AgentDef.ModelId" id="agentModelId" class="form-control"
-                                   list="agentGeminiModels" placeholder="Leave blank to use global model"
-                                   spellcheck="false" autocomplete="off" />
-                            <datalist id="agentGeminiModels">
-                                <option value="gemini-2.0-flash">gemini-2.0-flash</option>
-                                <option value="gemini-2.5-pro-preview-05-06">gemini-2.5-pro-preview</option>
-                                <option value="gemini-1.5-pro">gemini-1.5-pro</option>
-                                <option value="gemini-1.5-flash">gemini-1.5-flash</option>
-                                <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite</option>
-                            </datalist>
+                            <select id="agentModelId" name="AgentDef.ModelId" class="form-select"
+                                    style="font-family:monospace;font-size:.82rem;">
+                                <option value="">(use global model)</option>
+                            </select>
                         </div>
                         <div class="col-md-3">
                             <label asp-for="AgentDef.SortOrder" class="form-label fw-semibold">Sort Order</label>
@@ -2322,61 +2329,156 @@
         if (el) setTimeout(() => bootstrap.Alert.getOrCreateInstance(el).close(), 4000);
     });
 
-    // ── LLM: API key list (SuperAdmin only) ──────────────────────────────────
-    const keysContainer = document.getElementById('keysContainer');
-    const llmFormEl     = document.getElementById('llmForm');
-    const addKeyBtnEl   = document.getElementById('addKeyBtn');
-    if (keysContainer && llmFormEl && addKeyBtnEl) {
+    // ── LLM / OpenRouter ────────────────────────────────────────────────────
+    @if (isSuperAdmin)
+    {
+    <text>
+    (function () {
+        let _allModels = [];
 
-    function escHtml(s) {
-        return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    }
-
-    function reindexKeys() {
-        keysContainer.querySelectorAll('.key-row').forEach((row, i) => {
-            row.dataset.index = i;
-            row.querySelector('input').name = `Input.ApiKeys[${i}]`;
-            row.querySelector('.key-num').textContent = `#${i + 1}`;
+        // ── Key show/hide ────────────────────────────────────────────────────
+        document.getElementById('orKeyToggle').addEventListener('click', function () {
+            var f = document.getElementById('orApiKey');
+            f.type = f.type === 'password' ? 'text' : 'password';
         });
-    }
 
-    function buildKeyRow(idx, val) {
-        const d = document.createElement('div');
-        d.className = 'key-row'; d.dataset.index = idx;
-        d.innerHTML = `<span class="key-num">#${idx+1}</span>
-            <input type="password" name="Input.ApiKeys[${idx}]" value="${escHtml(val)}"
-                   class="form-control" placeholder="AIza…" spellcheck="false" autocomplete="off"/>
-            <button type="button" class="btn btn-outline-secondary btn-icon btn-toggle-vis" title="Show/hide">👁</button>
-            <button type="button" class="btn btn-outline-danger btn-icon btn-remove-key" title="Remove">✕</button>`;
-        return d;
-    }
+        // ── Fetch models with debounce ───────────────────────────────────────
+        var _debounceTimer = null;
+        document.getElementById('orApiKey').addEventListener('input', function () {
+            clearTimeout(_debounceTimer);
+            _debounceTimer = setTimeout(function () {
+                fetchModels(document.getElementById('orApiKey').value.trim());
+            }, 500);
+        });
 
-    keysContainer.addEventListener('click', e => {
-        const tv = e.target.closest('.btn-toggle-vis');
-        if (tv) {
-            const inp = tv.closest('.key-row').querySelector('input');
-            const hide = inp.type === 'password';
-            inp.type = hide ? 'text' : 'password';
-            tv.textContent = hide ? '🙈' : '👁';
-            return;
+        function setStatus(msg, type) {
+            var el = document.getElementById('orKeyStatus');
+            var colors = { loading: 'text-muted', success: 'text-success', error: 'text-danger' };
+            el.className = 'form-text mt-1 ' + (colors[type] || 'text-muted');
+            el.textContent = msg;
         }
-        const rm = e.target.closest('.btn-remove-key');
-        if (rm) { rm.closest('.key-row').remove(); reindexKeys(); }
-    });
 
-    addKeyBtnEl.addEventListener('click', () => {
-        const idx = keysContainer.querySelectorAll('.key-row').length;
-        const row = buildKeyRow(idx, '');
-        keysContainer.appendChild(row);
-        row.querySelector('input').focus();
-    });
+        function fetchModels(apiKey) {
+            if (!apiKey) {
+                document.getElementById('orModelSection').classList.add('d-none');
+                setStatus('', '');
+                return;
+            }
+            setStatus('⏳ Loading models…', 'loading');
+            fetch('/Settings?handler=OpenRouterModels', {
+                headers: { 'X-OpenRouter-Key': apiKey }
+            })
+                .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+                .then(function (res) {
+                    if (!res.ok || res.data.error) {
+                        setStatus('❌ ' + (res.data.error || 'Unknown error'), 'error');
+                        document.getElementById('orModelSection').classList.add('d-none');
+                        return;
+                    }
+                    _allModels = res.data.models;
+                    setStatus('✓ ' + _allModels.length + ' models loaded', 'success');
+                    populateProviderFilter();
+                    applyFilters();
+                    populateAgentModelPicker();
+                    document.getElementById('orModelSection').classList.remove('d-none');
+                })
+                .catch(function () {
+                    setStatus('❌ Could not reach OpenRouter', 'error');
+                    document.getElementById('orModelSection').classList.add('d-none');
+                });
+        }
 
-    llmFormEl.addEventListener('submit', () => {
-        document.getElementById('llmSaveTxt').textContent = 'Saving…';
-        document.getElementById('llmSaveSpinner').classList.remove('d-none');
-        document.getElementById('llmSaveBtn').disabled = true;
-    });
-    } // end LLM-only block
+        function populateProviderFilter() {
+            var sel = document.getElementById('orProviderFilter');
+            var current = sel.value;
+            sel.innerHTML = '<option value="">All providers</option>';
+            var providers = [...new Set(_allModels.map(function (m) { return m.provider; }))].sort();
+            providers.forEach(function (p) {
+                var o = document.createElement('option');
+                o.value = p; o.textContent = p;
+                if (p === current) o.selected = true;
+                sel.appendChild(o);
+            });
+        }
+
+        function formatCost(m) {
+            if (m.isFree) return 'FREE';
+            var fmt = function (n) {
+                return n === 0 ? '$0' : '$' + n.toFixed(n < 0.01 ? 4 : 2);
+            };
+            return fmt(m.inputCost) + ' / 1M in · ' + fmt(m.outputCost) + ' / 1M out';
+        }
+
+        function applyFilters() {
+            var search   = document.getElementById('orModelSearch').value.toLowerCase();
+            var provider = document.getElementById('orProviderFilter').value;
+            var freeOnly = document.getElementById('orFreeOnly').checked;
+            var current  = document.getElementById('llmModelIdHidden').value;
+
+            var filtered = _allModels.filter(function (m) {
+                if (freeOnly && !m.isFree) return false;
+                if (provider && m.provider !== provider) return false;
+                if (search && !m.name.toLowerCase().includes(search) &&
+                    !m.id.toLowerCase().includes(search)) return false;
+                return true;
+            });
+
+            var list = document.getElementById('orModelList');
+            list.innerHTML = '';
+            filtered.forEach(function (m) {
+                var o = document.createElement('option');
+                o.value = m.id;
+                var cost = formatCost(m);
+                o.textContent = m.name + ' (' + m.id + ')  —  ' + cost;
+                if (m.id === current) o.selected = true;
+                list.appendChild(o);
+            });
+
+            document.getElementById('orModelCount').textContent =
+                filtered.length + ' of ' + _allModels.length + ' models shown';
+        }
+
+        // Write selection into the hidden field for form submission
+        document.getElementById('orModelList').addEventListener('change', function () {
+            document.getElementById('llmModelIdHidden').value = this.value;
+        });
+
+        // Filters fire client-side
+        ['orModelSearch', 'orProviderFilter', 'orFreeOnly'].forEach(function (id) {
+            document.getElementById(id).addEventListener(
+                id === 'orFreeOnly' ? 'change' : 'input', applyFilters);
+        });
+
+        // ── Agent modal model picker ─────────────────────────────────────────
+        function populateAgentModelPicker() {
+            var sel = document.getElementById('agentModelId');
+            if (!sel) return;
+            var current = sel.value;
+            sel.innerHTML = '<option value="">(use global model)</option>';
+            _allModels.forEach(function (m) {
+                var o = document.createElement('option');
+                o.value = m.id;
+                o.textContent = m.name + ' (' + m.id + ')';
+                if (m.id === current) o.selected = true;
+                sel.appendChild(o);
+            });
+        }
+
+        // Re-populate agent picker when modal opens (restores saved ModelId)
+        document.addEventListener('show.bs.modal', function (e) {
+            if (e.target && e.target.id === 'agentModal') {
+                if (_allModels.length > 0) populateAgentModelPicker();
+            }
+        });
+
+        // Auto-fetch on page load if a key is already saved
+        var savedKey = document.getElementById('orApiKey').value.trim();
+        if (savedKey) fetchModels(savedKey);
+
+    })();
+    </text>
+    }
+    // ── end LLM-only block ───────────────────────────────────────────────────
 
     // ── MCP modal helpers ─────────────────────────────────────────────────────
     window.updateTransportFields = function (type) {
