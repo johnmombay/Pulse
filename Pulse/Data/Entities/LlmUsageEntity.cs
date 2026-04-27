@@ -21,7 +21,7 @@ public class LlmUsageEntity : ITenantOwned
     /// </summary>
     public string AgentName { get; set; } = string.Empty;
 
-    /// <summary>Gemini model id sent to Google (e.g. <c>gemini-2.5-flash</c>).</summary>
+    /// <summary>Model identifier used for this call (e.g. <c>openai/gpt-4o</c>, <c>anthropic/claude-3-5-sonnet</c>).</summary>
     public string ModelId { get; set; } = string.Empty;
 
     public int PromptTokens     { get; set; }

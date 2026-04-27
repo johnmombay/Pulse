@@ -1,6 +1,6 @@
 namespace Pulse.Data.Entities;
 
-/// <summary>One Gemini API key. Order is preserved via <see cref="SortOrder"/>.</summary>
+/// <summary>One LLM provider API key. Order is preserved via <see cref="SortOrder"/>.</summary>
 public class AppApiKeyEntity
 {
     public int    Id        { get; set; }

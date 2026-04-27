@@ -88,9 +88,6 @@ builder.Services.AddHangfire(config => config
 builder.Services.AddHangfireServer();
 
 // ── Agent services ────────────────────────────────────────────────────────────
-// Gemini LLM — agentic tasks with many tool calls can run for several minutes
-builder.Services.AddHttpClient("Gemini")
-	.ConfigureHttpClient(c => c.Timeout = TimeSpan.FromMinutes(10));
 builder.Services.AddHttpClient("GeminiEmbed")
 	.ConfigureHttpClient(c => c.Timeout = TimeSpan.FromMinutes(2));
 builder.Services.AddHttpClient("MemoryExtract")
