@@ -302,7 +302,7 @@
             </div>
 
             @* ── Model Picker (shown after models load) ─────────────────── *@
-            <div id="orModelSection" class="@(Model.Input.ApiKeys.Count > 0 && !string.IsNullOrWhiteSpace(Model.Input.ApiKeys[0]) ? "" : "d-none")">
+            <div id="orModelSection" class="d-none">
                 <hr class="my-3" />
                 <label class="form-label fw-semibold">Model</label>
 
@@ -2360,6 +2360,8 @@
 
         function fetchModels(apiKey) {
             if (!apiKey) {
+                _allModels = [];
+                document.getElementById('llmModelIdHidden').value = '';
                 document.getElementById('orModelSection').classList.add('d-none');
                 setStatus('', '');
                 return;
@@ -2468,6 +2470,14 @@
         document.addEventListener('show.bs.modal', function (e) {
             if (e.target && e.target.id === 'agentModal') {
                 if (_allModels.length > 0) populateAgentModelPicker();
+            }
+        });
+
+        // Sync selected model into hidden field before native form POST
+        document.getElementById('llmForm').addEventListener('submit', function () {
+            var list = document.getElementById('orModelList');
+            if (list && list.value) {
+                document.getElementById('llmModelIdHidden').value = list.value;
             }
         });
 
