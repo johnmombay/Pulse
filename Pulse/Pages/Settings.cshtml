@@ -283,20 +283,41 @@
         </div>
         <div class="card-body">
 
-            @* ── API Key ───────────────────────────────────────────────────── *@
+            @* ── API Keys ──────────────────────────────────────────────────── *@
             <div class="mb-4">
-                <label class="form-label fw-semibold">API Key</label>
-                <div class="input-group">
-                    <input type="password" id="orApiKey"
-                           name="Input.ApiKeys[0]"
-                           value="@(Model.Input.ApiKeys.Count > 0 ? Model.Input.ApiKeys[0] : "")"
-                           class="form-control" placeholder="sk-or-…"
-                           spellcheck="false" autocomplete="off" />
-                    <button type="button" class="btn btn-outline-secondary" id="orKeyToggle" title="Show/hide">👁</button>
+                <label class="form-label fw-semibold">API Keys</label>
+                <div id="orApiKeyList">
+                    @if (Model.Input.ApiKeys.Count == 0)
+                    {
+                        <div class="key-row">
+                            <span class="key-num">1</span>
+                            <input type="password" name="Input.ApiKeys[0]" value=""
+                                   class="form-control or-api-key-input" placeholder="sk-or-…"
+                                   spellcheck="false" autocomplete="off" />
+                            <button type="button" class="btn btn-outline-secondary btn-icon or-key-toggle" title="Show/hide">👁</button>
+                            <button type="button" class="btn btn-outline-danger btn-icon or-key-remove" title="Remove">✕</button>
+                        </div>
+                    }
+                    else
+                    {
+                        @for (int ki = 0; ki < Model.Input.ApiKeys.Count; ki++)
+                        {
+                            <div class="key-row">
+                                <span class="key-num">@(ki + 1)</span>
+                                <input type="password" name="Input.ApiKeys[@ki]" value="@Model.Input.ApiKeys[ki]"
+                                       class="form-control or-api-key-input" placeholder="sk-or-…"
+                                       spellcheck="false" autocomplete="off" />
+                                <button type="button" class="btn btn-outline-secondary btn-icon or-key-toggle" title="Show/hide">👁</button>
+                                <button type="button" class="btn btn-outline-danger btn-icon or-key-remove" title="Remove">✕</button>
+                            </div>
+                        }
+                    }
                 </div>
+                <button type="button" class="btn btn-outline-secondary btn-sm mt-2" id="orAddKey">➕ Add Key</button>
                 <div id="orKeyStatus" class="form-text mt-1"></div>
                 <div class="form-text">
-                    Your <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">OpenRouter API key</a>.
+                    Your <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">OpenRouter API keys</a>.
+                    Keys are tried in order; rate-limited keys are skipped automatically.
                     <strong>Global setting:</strong> applies to every tenant.
                 </div>
             </div>
@@ -2336,20 +2357,67 @@
     (function () {
         let _allModels = [];
 
-        // ── Key show/hide ────────────────────────────────────────────────────
-        document.getElementById('orKeyToggle').addEventListener('click', function () {
-            var f = document.getElementById('orApiKey');
-            f.type = f.type === 'password' ? 'text' : 'password';
+        // ── Key list helpers ─────────────────────────────────────────────────
+        function reindexKeyRows() {
+            var rows = document.querySelectorAll('#orApiKeyList .key-row');
+            rows.forEach(function (row, i) {
+                row.querySelector('.key-num').textContent = i + 1;
+                row.querySelector('input').name = 'Input.ApiKeys[' + i + ']';
+            });
+        }
+
+        function getFirstKey() {
+            var first = document.querySelector('#orApiKeyList .or-api-key-input');
+            return first ? first.value.trim() : '';
+        }
+
+        function bindKeyRowEvents(row) {
+            row.querySelector('.or-key-toggle').addEventListener('click', function () {
+                var inp = row.querySelector('input');
+                inp.type = inp.type === 'password' ? 'text' : 'password';
+            });
+            row.querySelector('.or-key-remove').addEventListener('click', function () {
+                var rows = document.querySelectorAll('#orApiKeyList .key-row');
+                if (rows.length > 1) {
+                    row.remove();
+                    reindexKeyRows();
+                } else {
+                    // Keep at least one row — just clear it
+                    row.querySelector('input').value = '';
+                    fetchModels('');
+                }
+            });
+            row.querySelector('input').addEventListener('input', function () {
+                clearTimeout(_debounceTimer);
+                _debounceTimer = setTimeout(function () {
+                    fetchModels(getFirstKey());
+                }, 500);
+            });
+        }
+
+        // Bind events to rows already on the page
+        document.querySelectorAll('#orApiKeyList .key-row').forEach(bindKeyRowEvents);
+
+        // ── Add key button ───────────────────────────────────────────────────
+        document.getElementById('orAddKey').addEventListener('click', function () {
+            var list = document.getElementById('orApiKeyList');
+            var idx  = list.querySelectorAll('.key-row').length;
+            var div  = document.createElement('div');
+            div.className = 'key-row';
+            div.innerHTML =
+                '<span class="key-num">' + (idx + 1) + '</span>' +
+                '<input type="password" name="Input.ApiKeys[' + idx + ']" value="" ' +
+                '       class="form-control or-api-key-input" placeholder="sk-or-…" ' +
+                '       spellcheck="false" autocomplete="off" />' +
+                '<button type="button" class="btn btn-outline-secondary btn-icon or-key-toggle" title="Show/hide">👁</button>' +
+                '<button type="button" class="btn btn-outline-danger btn-icon or-key-remove" title="Remove">✕</button>';
+            list.appendChild(div);
+            bindKeyRowEvents(div);
+            div.querySelector('input').focus();
         });
 
         // ── Fetch models with debounce ───────────────────────────────────────
         var _debounceTimer = null;
-        document.getElementById('orApiKey').addEventListener('input', function () {
-            clearTimeout(_debounceTimer);
-            _debounceTimer = setTimeout(function () {
-                fetchModels(document.getElementById('orApiKey').value.trim());
-            }, 500);
-        });
 
         function setStatus(msg, type) {
             var el = document.getElementById('orKeyStatus');
@@ -2482,7 +2550,7 @@
         });
 
         // Auto-fetch on page load if a key is already saved
-        var savedKey = document.getElementById('orApiKey').value.trim();
+        var savedKey = getFirstKey();
         if (savedKey) fetchModels(savedKey);
 
     })();

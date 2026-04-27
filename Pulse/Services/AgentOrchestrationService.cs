@@ -53,6 +53,9 @@ public sealed class AgentOrchestrationService(
         System.Net.HttpStatusCode.ServiceUnavailable or
         System.Net.HttpStatusCode.GatewayTimeout;
 
+    // Overload for the int status code surfaced by System.ClientModel.ClientResultException.
+    private static bool IsTransientStatusCode(int code) => code is 429 or 502 or 503 or 504;
+
     /// <summary>
     /// Pulls the provider's <c>error.message</c> out of the JSON response body when present
     /// (Payload looks like <c>{"error":{"code":400,"message":"...","status":"..."}}</c>).
@@ -107,13 +110,31 @@ public sealed class AgentOrchestrationService(
             return $"{prefix} Details: {detail}";
         }
 
+        // The OpenAI .NET SDK (used by Semantic Kernel's OpenAI connector) throws
+        // ClientResultException instead of HttpOperationException for HTTP errors.
+        if (ex is System.ClientModel.ClientResultException cre)
+        {
+            return cre.Status switch
+            {
+                400 => $"LLM provider rejected the request (400) for model '{modelId}'. " +
+                       "Most common cause: check that your model ID is correct.",
+                401 => "LLM provider rejected the API key (401). Check your OpenRouter API key in Settings \u2192 LLM.",
+                403 => $"LLM provider denied the request (403) for model '{modelId}'. " +
+                       "Check that your API key has access to this model on OpenRouter.",
+                404 => $"OpenRouter does not recognize model '{modelId}' (404). " +
+                       "Check the spelling in Settings \u2192 LLM \u2192 Model ID.",
+                429 => "OpenRouter API key is rate-limited (429). Try again in a moment, " +
+                       "or add more keys in Settings \u2192 LLM.",
+                _ => $"LLM provider returned HTTP {cre.Status}."
+            };
+        }
+
         return ex.Message;
     }
 
     /// <summary>
-    /// Best-effort parse of the provider's <c>retryDelay</c> hint from JSON body
-    /// (fallback — OpenRouter uses Retry-After header) surfaced on
-    /// <see cref="HttpOperationException.ResponseContent"/>.
+    /// Best-effort parse of the retry delay from a 429/5xx response.
+    /// Reads the provider's <c>retryDelay</c> JSON body field (e.g. <c>"retryDelay":"12s"</c>).
     /// Capped at 5 minutes to avoid pathological waits.
     /// </summary>
     private static TimeSpan? TryParseRetryAfter(HttpOperationException ex)
@@ -129,9 +150,9 @@ public sealed class AgentOrchestrationService(
         var j = body.IndexOf('"', i);
         if (j < 0) return null;
 
-        var token = body[i..j]; // e.g. "42s"
+        var token = body[i..j]; // e.g. "12s"
         if (token.EndsWith('s') && double.TryParse(token[..^1], out var secs))
-            return TimeSpan.FromSeconds(Math.Min(Math.Max(secs, 1), 300));
+            return TimeSpan.FromSeconds(Math.Clamp(secs, 1, 300));
 
         return null;
     }
@@ -257,7 +278,9 @@ public sealed class AgentOrchestrationService(
             chatHistory.SetSessionStatus(sessionId, "responding");
 
             var responseBuilder = new StringBuilder();
-            const int maxAttempts = 5;
+            // Allow at least one attempt per configured key (so every key gets tried on 429s),
+            // with a minimum of 5 and a cap of 10.
+            var maxAttempts = Math.Clamp(settings.ApiKeys.Count(k => !string.IsNullOrWhiteSpace(k)), 5, 10);
             Exception? lastError = null;
 
             for (var attempt = 1; attempt <= maxAttempts; attempt++)
@@ -267,6 +290,7 @@ public sealed class AgentOrchestrationService(
                 mcpClients = [];
 
                 var apiKey = openRouter.GetApiKey(settings.ApiKeys);
+                var currentKey = apiKey; // captured for MarkRateLimited on 429
 
 #pragma warning disable SKEXP0010
                 var kernelBuilder = Kernel.CreateBuilder()
@@ -351,6 +375,21 @@ public sealed class AgentOrchestrationService(
                     lastError = null;
                     break; // success
                 }
+                // 429: mark key as rate-limited and rotate to the next one immediately.
+                catch (HttpOperationException ex) when (
+                    ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests &&
+                    !streamedAnything &&
+                    attempt < maxAttempts)
+                {
+                    var cooldown = TryParseRetryAfter(ex);
+                    openRouter.MarkRateLimited(currentKey, cooldown);
+                    logger.LogWarning(
+                        "Session {SessionId}: key rate-limited (429) on attempt {Attempt}/{Max}. " +
+                        "Cooldown: {Cooldown}s. Rotating to next available key.",
+                        sessionId, attempt, maxAttempts, (cooldown ?? TimeSpan.FromSeconds(12)).TotalSeconds);
+                    lastError = ex;
+                }
+                // Other transient errors (502/503/504): exponential backoff, same key.
                 catch (HttpOperationException ex) when (
                     IsTransientStatus(ex.StatusCode) &&
                     !streamedAnything &&
@@ -378,6 +417,47 @@ public sealed class AgentOrchestrationService(
                         $"OpenRouter returned 404 for model '{modelId}'. The model name is invalid, deprecated, " +
                         $"or not available to your API key. Open Settings \u2192 LLM and pick a supported " +
                         $"model (e.g. openai/gpt-4o, anthropic/claude-3-5-sonnet, meta-llama/llama-3.1-405b).", ex);
+                }
+                // The OpenAI .NET SDK (backing SK's OpenAI connector) throws ClientResultException
+                // for HTTP errors -- NOT HttpOperationException. Mirror the same rotate/backoff/bail logic.
+                // 429: mark key as rate-limited and rotate to the next one immediately.
+                catch (System.ClientModel.ClientResultException ex) when (
+                    ex.Status == 429 &&
+                    !streamedAnything &&
+                    attempt < maxAttempts)
+                {
+                    // ClientResultException doesn't expose headers; use the default cooldown.
+                    openRouter.MarkRateLimited(currentKey);
+                    logger.LogWarning(
+                        "Session {SessionId}: key rate-limited (429) on attempt {Attempt}/{Max}. " +
+                        "Rotating to next available key.",
+                        sessionId, attempt, maxAttempts);
+                    lastError = ex;
+                }
+                // Other transient errors (502/503/504): exponential backoff, same key.
+                catch (System.ClientModel.ClientResultException ex) when (
+                    IsTransientStatusCode(ex.Status) &&
+                    !streamedAnything &&
+                    attempt < maxAttempts)
+                {
+                    var backoff = TimeSpan.FromMilliseconds(750 * Math.Pow(2, attempt - 1));
+
+                    logger.LogWarning(
+                        "Session {SessionId}: LLM {Status} on attempt {Attempt}/{Max}. " +
+                        "Retrying after {Backoff}ms.",
+                        sessionId, ex.Status, attempt, maxAttempts, backoff.TotalMilliseconds);
+
+                    await Task.Delay(backoff, cancellationToken);
+                    lastError = ex;
+                }
+                catch (System.ClientModel.ClientResultException ex) when (
+                    ex.Status == 404 &&
+                    !streamedAnything)
+                {
+                    throw new InvalidOperationException(
+                        $"OpenRouter returned 404 for model '{modelId}'. The model name is invalid, " +
+                        $"deprecated, or not available to your API key. Open Settings and pick a " +
+                        $"supported model (e.g. openai/gpt-4o, anthropic/claude-3-5-sonnet).", ex);
                 }
             }
 

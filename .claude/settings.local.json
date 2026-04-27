@@ -4,7 +4,20 @@
       "Bash(pwsh -NoProfile -Command ' *)",
       "Bash(pwsh -NoProfile -ExecutionPolicy Bypass -File ./rename.ps1)",
       "Bash(dotnet build *)",
-      "Bash(dotnet ef *)"
+      "Bash(dotnet ef *)",
+      "Bash(xargs grep *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git commit *)",
+      "Bash(git rm *)",
+      "Bash(powershell -Command ' *)",
+      "Bash(python3 -c ' *)",
+      "Bash(git -C \"C:\\\\Users\\\\johnm\\\\source\\\\repos\\\\Pulse\\\\.worktrees\\\\feature\\\\multi-tenancy\" diff c0a31f6..HEAD -- Pulse/Pages/Settings.cshtml)",
+      "Bash(git -C \"C:\\\\Users\\\\johnm\\\\source\\\\repos\\\\Pulse\\\\.worktrees\\\\feature\\\\multi-tenancy\" diff c0a31f6..HEAD -- Pulse/Pages/Settings.cshtml.cs)",
+      "Bash(grep -v \"^[0-9]*:.*//\\\\|^\\\\s*//\")",
+      "Bash(dotnet test *)",
+      "Bash(Get-Content -Wait -Tail 5 'C:\\\\Users\\\\johnm\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-johnm-source-repos-Pulse--worktrees-feature-multi-tenancy\\\\76231a06-cdda-47b1-bb0a-39d34b844e67\\\\tasks\\\\bhn7jtweo.output')",
+      "Bash(Select-String --line-buffered \"error|warning|Build succeeded|FAILED|Error\")"
     ]
   }
 }
