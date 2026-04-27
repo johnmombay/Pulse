@@ -24,7 +24,9 @@ public class SettingsModel(
     ITenantContext tenantContext,
     GlobalAgentMailSettingsService globalAgentMail,
     GlobalLlmSettingsService globalLlm,
-    ISubscriptionLimitService subscriptionLimits) : PageModel
+    ISubscriptionLimitService subscriptionLimits,
+    IHttpClientFactory httpClientFactory,
+    IMemoryCache cache) : PageModel
 {
     // TODO(multi-tenancy): Admin settings pages should validate the user belongs to this tenant.
     private Guid TenantId => tenantContext.TenantId ?? Guid.Empty;
@@ -220,30 +222,27 @@ public class SettingsModel(
     }
 
     // ── OpenRouter: fetch model list (SuperAdmin only) ────────────────────────
-    private static readonly IMemoryCache _openRouterModelCache =
-        new MemoryCache(new MemoryCacheOptions());
-
-    public async Task<IActionResult> OnGetOpenRouterModelsAsync([FromQuery] string apiKey)
+    public async Task<IActionResult> OnGetOpenRouterModelsAsync()
     {
         if (!User.IsInRole("SuperAdmin")) return Forbid();
+        var apiKey = Request.Headers["X-OpenRouter-Key"].FirstOrDefault();
         if (string.IsNullOrWhiteSpace(apiKey))
             return new JsonResult(new { error = "API key is required." }) { StatusCode = 400 };
 
-        var cacheKey = "OR_" + Convert.ToHexString(
+        var cacheKey = "OR_Models_" + Convert.ToHexString(
             SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(apiKey)))[..16];
 
-        if (_openRouterModelCache.TryGetValue(cacheKey, out object? cached))
+        if (cache.TryGetValue(cacheKey, out object? cached))
             return new JsonResult(cached);
 
-        using var http = new HttpClient();
+        using var http = httpClientFactory.CreateClient("OpenRouter");
         http.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", apiKey);
-        http.Timeout = TimeSpan.FromSeconds(15);
 
         HttpResponseMessage resp;
         try
         {
-            resp = await http.GetAsync("https://openrouter.ai/api/v1/models");
+            resp = await http.GetAsync("models");
         }
         catch (Exception ex)
         {
@@ -259,46 +258,59 @@ public class SettingsModel(
                 { StatusCode = 502 };
 
         var json = await resp.Content.ReadAsStringAsync();
-        using var doc = JsonDocument.Parse(json);
-
-        var models = new List<object>();
-        foreach (var item in doc.RootElement.GetProperty("data").EnumerateArray())
+        List<object> models;
+        try
         {
-            var id   = item.GetProperty("id").GetString() ?? "";
-            var name = item.TryGetProperty("name", out var n) ? n.GetString() ?? id : id;
-            var provider = id.Contains('/') ? id[..id.IndexOf('/')] : id;
+            using var doc = JsonDocument.Parse(json);
+            models = new List<object>();
 
-            decimal inputCost  = 0m;
-            decimal outputCost = 0m;
-            if (item.TryGetProperty("pricing", out var pricing))
+            if (!doc.RootElement.TryGetProperty("data", out var dataElement))
+                return new JsonResult(new { error = "Unexpected response format from OpenRouter." })
+                    { StatusCode = 502 };
+
+            foreach (var item in dataElement.EnumerateArray())
             {
-                if (pricing.TryGetProperty("prompt", out var p) &&
-                    decimal.TryParse(p.GetString(), System.Globalization.NumberStyles.Any,
-                        System.Globalization.CultureInfo.InvariantCulture, out var pv))
-                    inputCost = pv * 1_000_000m;
+                var id   = item.GetProperty("id").GetString() ?? "";
+                var name = item.TryGetProperty("name", out var n) ? n.GetString() ?? id : id;
+                var provider = id.Contains('/') ? id[..id.IndexOf('/')] : id;
 
-                if (pricing.TryGetProperty("completion", out var c) &&
-                    decimal.TryParse(c.GetString(), System.Globalization.NumberStyles.Any,
-                        System.Globalization.CultureInfo.InvariantCulture, out var cv))
-                    outputCost = cv * 1_000_000m;
+                decimal inputCost  = 0m;
+                decimal outputCost = 0m;
+                if (item.TryGetProperty("pricing", out var pricing))
+                {
+                    if (pricing.TryGetProperty("prompt", out var p) &&
+                        decimal.TryParse(p.GetString(), System.Globalization.NumberStyles.Any,
+                            System.Globalization.CultureInfo.InvariantCulture, out var pv))
+                        inputCost = pv * 1_000_000m;
+
+                    if (pricing.TryGetProperty("completion", out var c) &&
+                        decimal.TryParse(c.GetString(), System.Globalization.NumberStyles.Any,
+                            System.Globalization.CultureInfo.InvariantCulture, out var cv))
+                        outputCost = cv * 1_000_000m;
+                }
+
+                models.Add(new
+                {
+                    id,
+                    name,
+                    provider,
+                    inputCost  = Math.Round(inputCost,  4),
+                    outputCost = Math.Round(outputCost, 4),
+                    isFree     = inputCost == 0m && outputCost == 0m
+                });
             }
-
-            models.Add(new
-            {
-                id,
-                name,
-                provider,
-                inputCost  = Math.Round(inputCost,  4),
-                outputCost = Math.Round(outputCost, 4),
-                isFree     = inputCost == 0m && outputCost == 0m
-            });
+        }
+        catch (Exception ex)
+        {
+            return new JsonResult(new { error = $"Failed to parse OpenRouter response: {ex.Message}" })
+                { StatusCode = 502 };
         }
 
         if (models.Count == 0)
-            return new JsonResult(new { error = "No models found for this key." }) { StatusCode = 200 };
+            return new JsonResult(new { error = "No models found for this key." }) { StatusCode = 422 };
 
         var result = new { models };
-        _openRouterModelCache.Set(cacheKey, result,
+        cache.Set(cacheKey, result,
             new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1) });
 
         return new JsonResult(result);

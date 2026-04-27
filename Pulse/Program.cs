@@ -142,6 +142,13 @@ builder.Services.AddHttpClient("N8n")
 // ── AgentMail (email) ─────────────────────────────────────────────────────────
 builder.Services.AddHttpClient("AgentMail")
 	.ConfigureHttpClient(c => c.Timeout = TimeSpan.FromMinutes(2));
+
+// ── OpenRouter model list ─────────────────────────────────────────────────────
+builder.Services.AddHttpClient("OpenRouter", c =>
+{
+	c.BaseAddress = new Uri("https://openrouter.ai/api/v1/");
+	c.Timeout = TimeSpan.FromSeconds(15);
+});
 builder.Services.AddTransient<AgentMailService>();
 builder.Services.AddTransient<AgentMailPlugin>();
 
