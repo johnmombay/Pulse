@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Pulse.Data;
 using Pulse.Data.Entities;
 using Pulse.Infrastructure;
+using Pulse.Services;
 
 namespace Pulse.Pages.Admin;
 
@@ -15,11 +16,13 @@ public class TenantsModel : PageModel
 {
     private readonly ApplicationDbContext _db;
     private readonly DeploymentOptions    _deployment;
+    private readonly LlmSettingsService   _llmSettings;
 
-    public TenantsModel(ApplicationDbContext db, IOptions<DeploymentOptions> deployment)
+    public TenantsModel(ApplicationDbContext db, IOptions<DeploymentOptions> deployment, LlmSettingsService llmSettings)
     {
-        _db        = db;
-        _deployment = deployment.Value;
+        _db          = db;
+        _deployment  = deployment.Value;
+        _llmSettings = llmSettings;
     }
 
     public List<TenantRow> Tenants { get; set; } = [];
@@ -52,6 +55,7 @@ public class TenantsModel : PageModel
         public int?   CurrentPlanId   { get; init; }
         public string? SubscriptionStatus { get; init; }
         public string? BillingCycle   { get; init; }
+        public bool   WebSearchEnabled { get; init; }
     }
 
     public class AssignPlanInput
@@ -75,6 +79,19 @@ public class TenantsModel : PageModel
 
         tenant.IsActive = !tenant.IsActive;
         await _db.SaveChangesAsync();
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostToggleWebSearchAsync(Guid id)
+    {
+        var settings = await _llmSettings.GetAsync(id);
+        var current  = settings.WebSearch ?? new();
+        await _llmSettings.SaveWebSearchSettingsAsync(id, new Models.WebSearchSettings
+        {
+            IsEnabled  = !current.IsEnabled,
+            MaxResults = current.MaxResults == 0 ? 5 : current.MaxResults,
+        });
+        StatusMessage = $"Web search {(!current.IsEnabled ? "enabled" : "disabled")} for tenant.";
         return RedirectToPage();
     }
 
@@ -162,9 +179,18 @@ public class TenantsModel : PageModel
             })
             .ToListAsync();
 
-        // Enrich rows with subscription info after the projection
+        // Load web search settings per tenant
+        var webSearchByTenant = new Dictionary<Guid, bool>();
+        foreach (var t in Tenants)
+        {
+            var s = await _llmSettings.GetAsync(t.Id);
+            webSearchByTenant[t.Id] = s.WebSearch?.IsEnabled == true;
+        }
+
+        // Enrich rows with subscription info and web search flag
         Tenants = Tenants.Select(row =>
         {
+            webSearchByTenant.TryGetValue(row.Id, out var wsEnabled);
             if (subsByTenant.TryGetValue(row.Id, out var sub))
                 return new TenantRow
                 {
@@ -178,8 +204,18 @@ public class TenantsModel : PageModel
                     CurrentPlanId      = sub.SubscriptionPlanId,
                     SubscriptionStatus = sub.Status.ToString(),
                     BillingCycle       = sub.BillingCycle.ToString(),
+                    WebSearchEnabled   = wsEnabled,
                 };
-            return row;
+            return new TenantRow
+            {
+                Id              = row.Id,
+                Name            = row.Name,
+                Slug            = row.Slug,
+                UserCount       = row.UserCount,
+                IsActive        = row.IsActive,
+                CreatedUtc      = row.CreatedUtc,
+                WebSearchEnabled = wsEnabled,
+            };
         }).ToList();
 
         var plans = await _db.SubscriptionPlans

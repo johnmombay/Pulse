@@ -29,6 +29,7 @@
                 <th style="width:16%">Plan</th>
                 <th style="width:10%">Billing</th>
                 <th style="width:9%">Status</th>
+                <th class="text-center" style="width:9%">Web Search</th>
                 <th class="text-end pe-4" style="width:13%">Actions</th>
             </tr>
         </thead>
@@ -71,6 +72,15 @@
                         {
                             <span class="badge bg-secondary">Inactive</span>
                         }
+                    </td>
+                    <td class="text-center">
+                        <form method="post" asp-page-handler="ToggleWebSearch" asp-route-id="@row.Id">
+                            <button class="btn btn-sm @(row.WebSearchEnabled ? "btn-success" : "btn-outline-secondary")"
+                                    type="submit"
+                                    title="@(row.WebSearchEnabled ? "Disable web search" : "Enable web search")">
+                                🔍 @(row.WebSearchEnabled ? "On" : "Off")
+                            </button>
+                        </form>
                     </td>
                     <td class="text-end pe-4">
                         <div class="d-flex justify-content-end gap-2">
