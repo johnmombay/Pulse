@@ -28,6 +28,9 @@ public class LlmSettingsModel
     /// <summary>Terminal (shell execution) settings.</summary>
     public TerminalSettings TerminalSettings { get; set; } = new();
 
+    /// <summary>DuckDuckGo web search settings.</summary>
+    public WebSearchSettings WebSearch { get; set; } = new();
+
     /// <summary>AgentMail email integration settings.</summary>
     public AgentMailSettings AgentMail { get; set; } = new();
 

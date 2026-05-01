@@ -132,6 +132,14 @@ builder.Services.AddTransient<ExcelGeneratorPlugin>();
 // ── Terminal (shell execution) ────────────────────────────────────────────────
 builder.Services.AddTransient<TerminalPlugin>();
 
+// ── Web Search (DuckDuckGo) ───────────────────────────────────────────────────
+builder.Services.AddHttpClient("WebSearch", c =>
+{
+	c.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (compatible; Pulse/1.0)");
+	c.Timeout = TimeSpan.FromSeconds(15);
+});
+builder.Services.AddTransient<WebSearchPlugin>();
+
 // ── n8n webhook client ────────────────────────────────────────────────────────
 builder.Services.AddHttpClient("N8n")
 	.ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(30));

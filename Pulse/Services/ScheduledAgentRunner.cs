@@ -22,6 +22,7 @@ public sealed class ScheduledAgentRunner(
     TerminalPlugin terminalPlugin,
     AgentMailPlugin agentMailPlugin,
     FlatFileDataPlugin flatFileDataPlugin,
+    WebSearchPlugin webSearchPlugin,
     McpService mcpService,
     LlmUsageService usageService,
     ILogger<ScheduledAgentRunner> logger)
@@ -66,6 +67,11 @@ public sealed class ScheduledAgentRunner(
             if (enabledFlatFiles.Count > 0)
                 kernel.Plugins.AddFromObject(flatFileDataPlugin, "FlatFileData");
 
+            // Web search (DuckDuckGo)
+            var webSearchLoaded = settings.WebSearch?.IsEnabled == true;
+            if (webSearchLoaded)
+                kernel.Plugins.AddFromObject(webSearchPlugin, "WebSearch");
+
             // MCP servers (includes DuckDuckGo search and any others configured by the tenant)
             var enabledMcp = (settings.McpServers ?? []).Where(s => s.IsEnabled).ToList();
             if (enabledMcp.Count > 0)
@@ -81,11 +87,17 @@ public sealed class ScheduledAgentRunner(
             kernel.Plugins.AddFromObject(chartPlugin, "ChartGenerator");
 
             var history = new ChatHistory();
-            history.AddSystemMessage(
+            var systemPrompt = new System.Text.StringBuilder(
                 "You are an autonomous scheduled task agent. " +
                 "Execute the given instructions completely and return a clear, " +
                 "concise summary of what was done and the results. " +
                 "Be specific — include numbers, names, and key findings.");
+            if (webSearchLoaded)
+                systemPrompt.Append(
+                    " You have access to the search_web tool — use it proactively whenever " +
+                    "you need current information, news, prices, or any live data. " +
+                    "Never say you cannot browse the web; call search_web instead.");
+            history.AddSystemMessage(systemPrompt.ToString());
             history.AddUserMessage(instructions);
 
             var executionSettings = new OpenAIPromptExecutionSettings

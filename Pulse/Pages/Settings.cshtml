@@ -258,6 +258,7 @@
     @if (isSuperAdmin)
     {
         <li class="nav-item"><button type="button" class="nav-link" data-tab="terminal">🖥️ Terminal</button></li>
+        <li class="nav-item"><button type="button" class="nav-link" data-tab="websearch">🔍 Web Search</button></li>
     }
     @if (isSuperAdmin)
     {
@@ -2214,6 +2215,66 @@
     </div>
 </div>
 </div><!-- /tab-pane-terminal -->
+}
+
+@if (isSuperAdmin)
+{
+<div id="tab-pane-websearch" class="settings-tab-pane pt-4">
+@* ═══════════════════════════════════════════════════════════════════════════
+   WEB SEARCH (DuckDuckGo)
+═══════════════════════════════════════════════════════════════════════════ *@
+@{
+    var webSearchSuccess = TempData["WebSearchSuccess"] as string;
+    var ws = Model.WebSearch;
+}
+@if (webSearchSuccess != null)
+{
+    <div class="alert alert-success alert-dismissible d-flex align-items-center gap-2 mb-4">
+        ✅ <span>@webSearchSuccess</span>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+    </div>
+}
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white py-3">
+        <div class="settings-section-header">🔍 Web Search</div>
+    </div>
+    <div class="card-body">
+        <p class="text-muted small mb-3">
+            Allow agents to search the web using <strong>DuckDuckGo</strong> (no API key required).
+            When enabled, all agents — including chat, scheduled tasks, and workflows — can call
+            <code>search_web</code> to retrieve current information.
+        </p>
+        <form method="post" asp-page-handler="SaveWebSearch">
+            <div class="mb-3 d-flex align-items-center gap-3">
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           asp-for="WebSearch.IsEnabled" id="webSearchEnabled">
+                    <label class="form-check-label fw-semibold" for="webSearchEnabled">
+                        Enable web search
+                    </label>
+                </div>
+                @if (ws.IsEnabled)
+                {
+                    <span class="badge bg-success-subtle text-success border border-success-subtle">Active</span>
+                }
+                else
+                {
+                    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Disabled</span>
+                }
+            </div>
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label asp-for="WebSearch.MaxResults" class="form-label fw-semibold">Max Results</label>
+                    <input asp-for="WebSearch.MaxResults" type="number"
+                           class="form-control" min="1" max="20" />
+                    <div class="form-text">Maximum number of search results returned per query (1 – 20).</div>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">💾 Save Web Search Settings</button>
+        </form>
+    </div>
+</div>
+</div><!-- /tab-pane-websearch -->
 }
 
 @* ═══════════════════════════════════════════════════════════════════════════

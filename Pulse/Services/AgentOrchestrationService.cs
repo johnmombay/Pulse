@@ -37,6 +37,7 @@ public sealed class AgentOrchestrationService(
     TerminalPlugin terminalPlugin,
     AgentMailPlugin agentMailPlugin,
     FlatFileDataPlugin flatFileDataPlugin,
+    WebSearchPlugin webSearchPlugin,
     LlmUsageService usageService,
     ISubscriptionLimitService subscriptionLimits,
     IHubContext<AgentHub> hubContext,
@@ -560,6 +561,13 @@ public sealed class AgentOrchestrationService(
 
         var chartPlugin = new ChartGeneratorPlugin(sessionId, userId, hubContext, chatHistory, logger);
         kernel.Plugins.AddFromObject(chartPlugin, "ChartGenerator");
+
+        if (settings.WebSearch?.IsEnabled == true)
+        {
+            kernel.Plugins.AddFromObject(webSearchPlugin, "WebSearch");
+            logger.LogInformation("Session {SessionId}: WebSearch plugin loaded", sessionId);
+        }
+
         return mcpClients;
     }
 
@@ -633,6 +641,13 @@ public sealed class AgentOrchestrationService(
         {
             var chartPlugin = new ChartGeneratorPlugin(sessionId, userId, hubContext, chatHistory, logger);
             kernel.Plugins.AddFromObject(chartPlugin, "ChartGenerator");
+        }
+
+        if (allowedKeys.Contains(AgentDefinition.PluginKeys.WebSearch) &&
+            settings.WebSearch?.IsEnabled == true)
+        {
+            kernel.Plugins.AddFromObject(webSearchPlugin, "WebSearch");
+            logger.LogInformation("Session {SessionId}: orchestrator loaded WebSearch plugin", sessionId);
         }
 
         return mcpClients;

@@ -266,8 +266,8 @@ public sealed class LlmSettingsService
     public Task SaveTerminalSettingsAsync(Guid tenantId, TerminalSettings settings) =>
         UpdateScalarAsync(tenantId, row => row.Terminal = Clone(settings));
 
-    public Task SaveWebSearchSettingsAsync(Guid tenantId, object? _ = null) =>
-        Task.CompletedTask; // No-op: Bing search removed; web search now via MCP
+    public Task SaveWebSearchSettingsAsync(Guid tenantId, WebSearchSettings settings) =>
+        UpdateScalarAsync(tenantId, row => row.WebSearch = Clone(settings));
 
     public Task SaveAgentMailSettingsAsync(AgentMailSettings settings) =>
         Task.CompletedTask; // TODO(multi-tenancy): AgentMail moved to GlobalAgentMailSettings
@@ -398,6 +398,7 @@ public sealed class LlmSettingsService
                 LogoFileName     = row?.LogoFileName,
                 LogoVersion      = row?.LogoVersion,
                 TerminalSettings = row?.Terminal     ?? new(),
+                WebSearch        = NormalizeWebSearch(row?.WebSearch),
                 AgentMail        = new(), // TODO(multi-tenancy): AgentMail moved to GlobalAgentMailSettings
                 Security         = row?.Security     ?? new(),
                 ApiKeys          = keys,
@@ -427,15 +428,25 @@ public sealed class LlmSettingsService
         row.LogoFileName = m.LogoFileName;
         row.LogoVersion  = m.LogoVersion;
         row.Terminal     = Clone(m.TerminalSettings ?? new());
+        row.WebSearch    = Clone(m.WebSearch ?? new());
         // TODO(multi-tenancy): AgentMail moved to GlobalAgentMailSettings
         row.Security     = Clone(m.Security ?? new());
         row.UpdatedAtUtc = DateTime.UtcNow;
     }
 
+    private static WebSearchSettings NormalizeWebSearch(WebSearchSettings? s) => new()
+    {
+        IsEnabled  = s?.IsEnabled  ?? false,
+        MaxResults = (s?.MaxResults ?? 0) == 0 ? 5 : s!.MaxResults,
+    };
     private static TerminalSettings Clone(TerminalSettings s) => new()
     {
         IsEnabled = s.IsEnabled, DefaultShell = s.DefaultShell, WorkingDirectory = s.WorkingDirectory,
         TimeoutSeconds = s.TimeoutSeconds, MaxOutputLength = s.MaxOutputLength
+    };
+    private static WebSearchSettings Clone(WebSearchSettings s) => new()
+    {
+        IsEnabled = s.IsEnabled, MaxResults = s.MaxResults
     };
     private static AgentMailSettings Clone(AgentMailSettings s) => new()
     {

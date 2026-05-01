@@ -61,5 +61,6 @@ public class AgentDefinition
         public const string Chart        = "Chart";
         public const string Rag          = "Rag";
         public const string Mcp          = "Mcp";
+        public const string WebSearch    = "WebSearch";
     }
 }

@@ -33,6 +33,7 @@ public sealed class SpecializedAgentRunner(
     TerminalPlugin terminalPlugin,
     AgentMailPlugin agentMailPlugin,
     FlatFileDataPlugin flatFileDataPlugin,
+    WebSearchPlugin webSearchPlugin,
     ChatHistoryService chatHistory,
     LlmUsageService usageService,
     IHubContext<AgentHub> hubContext,
@@ -172,6 +173,14 @@ public sealed class SpecializedAgentRunner(
                     chatHistory,
                     logger);
                 kernel.Plugins.AddFromObject(chartPlugin, "ChartGenerator");
+            }
+
+            // ── Web Search (DuckDuckGo, global IsEnabled veto applies) ─────────
+            if (allowedKeys.Contains(AgentDefinition.PluginKeys.WebSearch) &&
+                settings.WebSearch?.IsEnabled == true)
+            {
+                kernel.Plugins.AddFromObject(webSearchPlugin, "WebSearch");
+                logger.LogInformation("SubAgent {Name}: WebSearch plugin loaded", agent.Name);
             }
 
             // ── Build chat history ────────────────────────────────────────────

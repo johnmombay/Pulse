@@ -98,6 +98,10 @@ public class SettingsModel(
     [BindProperty]
     public TerminalInput Terminal { get; set; } = new();
 
+    // ── Web Search ────────────────────────────────────────────────────────────
+    [BindProperty]
+    public WebSearchInput WebSearch { get; set; } = new();
+
     // ── AgentMail ─────────────────────────────────────────────────────────────
     [BindProperty]
     public AgentMailInput AgentMail { get; set; } = new();
@@ -148,6 +152,13 @@ public class SettingsModel(
             WorkingDirectory = ts.WorkingDirectory,
             TimeoutSeconds   = ts.TimeoutSeconds,
             MaxOutputLength  = ts.MaxOutputLength,
+        };
+
+        var ws = current.WebSearch ?? new();
+        WebSearch = new WebSearchInput
+        {
+            IsEnabled  = ws.IsEnabled,
+            MaxResults = ws.MaxResults == 0 ? 5 : ws.MaxResults,
         };
 
         var am = await globalAgentMail.GetAsync();
@@ -1125,10 +1136,15 @@ public class SettingsModel(
     }
 
     // ── Web search ────────────────────────────────────────────────────────────
-    public IActionResult OnPostSaveWebSearchAsync()
+    public async Task<IActionResult> OnPostSaveWebSearchAsync()
     {
-        // Bing search removed — web search is now handled via MCP (DuckDuckGo).
-        TempData["WebSearchSuccess"] = "Web search is now provided via MCP servers.";
+        var model = new WebSearchSettings
+        {
+            IsEnabled  = WebSearch.IsEnabled,
+            MaxResults = Math.Clamp(WebSearch.MaxResults, 1, 20),
+        };
+        await settingsService.SaveWebSearchSettingsAsync(TenantId, model);
+        TempData["WebSearchSuccess"] = "Web search settings saved.";
         return RedirectToPage();
     }
 
@@ -1299,6 +1315,12 @@ public class SettingsModel(
         public string WorkingDirectory { get; set; } = "";
         [Range(5, 300)]  public int TimeoutSeconds  { get; set; } = 30;
         [Range(1000, 100000)] public int MaxOutputLength { get; set; } = 8000;
+    }
+
+    public class WebSearchInput
+    {
+        public bool IsEnabled  { get; set; } = false;
+        [Range(1, 20)] public int MaxResults { get; set; } = 5;
     }
 
     public class AgentMailInput

@@ -128,6 +128,12 @@ namespace Pulse.Data
 						sc.Property(p => p.MaxFailedLoginAttempts).HasColumnName("Security_MaxFailedLoginAttempts");
 						sc.Property(p => p.LoginLockoutHours).HasColumnName("Security_LoginLockoutHours");
 					});
+
+				e.OwnsOne(s => s.WebSearch, ws =>
+				{
+					ws.Property(p => p.IsEnabled).HasColumnName("WebSearch_IsEnabled");
+					ws.Property(p => p.MaxResults).HasColumnName("WebSearch_MaxResults");
+				});
 			});
 
 			builder.Entity<AppApiKeyEntity>(e =>
