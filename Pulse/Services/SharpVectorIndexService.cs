@@ -146,13 +146,62 @@ public sealed class SharpVectorIndexService(ILogger<SharpVectorIndexService> log
         _memDbs.TryRemove(userId, out _);
         logger.LogDebug("SharpVector Memory: invalidated index for user {UserId}", userId);
     }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Lessons (self-learning)
+    // ══════════════════════════════════════════════════════════════════════════
+
+    private readonly ConcurrentDictionary<string, BasicMemoryVectorDatabase> _lessonDbs = new();
+
+    public bool IsLessonIndexed(string indexKey) => _lessonDbs.ContainsKey(indexKey);
+
+    /// <summary>Builds or rebuilds the lesson index for a given tenant/domain/agent scope.</summary>
+    public async Task IndexLessonsAsync(
+        string indexKey,
+        IEnumerable<(int Id, string GoalText)> lessons,
+        CancellationToken ct = default)
+    {
+        var sem = Lock($"lesson:{indexKey}");
+        await sem.WaitAsync(ct);
+        try
+        {
+            var db    = new BasicMemoryVectorDatabase();
+            int count = 0;
+            foreach (var (id, goalText) in lessons.Where(l => !string.IsNullOrWhiteSpace(l.GoalText)))
+            {
+                db.AddText(goalText, id.ToString());
+                count++;
+            }
+            _lessonDbs[indexKey] = db;
+            logger.LogDebug("SharpVector Lessons: indexed {N} item(s) for key {Key}", count, indexKey);
+        }
+        finally { sem.Release(); }
+    }
+
+    /// <summary>Returns the IDs of the top-K most relevant lessons.</summary>
+    public List<int> SearchLessons(string indexKey, string query, int topK = 5)
+    {
+        if (string.IsNullOrWhiteSpace(query)) return [];
+        if (!_lessonDbs.TryGetValue(indexKey, out var db)) return [];
+
+        var result = db.Search(query, null, 0, topK, null);
+        if (result.IsEmpty) return [];
+
+        return result.Texts
+            .OrderByDescending(i => i.Similarity)
+            .Select(item => item.Metadata)
+            .Where(m => int.TryParse(m, out _))
+            .Select(int.Parse!)
+            .Distinct()
+            .Take(topK)
+            .ToList();
+    }
+
+    public void InvalidateLessonIndex(Guid tenantId)
+    {
+        var prefix = $"lessons:{tenantId:N}";
+        foreach (var key in _lessonDbs.Keys.Where(k => k.StartsWith(prefix)))
+            _lessonDbs.TryRemove(key, out _);
+        logger.LogDebug("SharpVector Lessons: invalidated all indexes for tenant {TenantId}", tenantId);
+    }
 }
-
-
-/// <summary>
-/// Singleton that maintains per-document (RAG) and per-user (Memory)
-/// in-memory SharpVector indexes for fast, API-free text similarity search.
-///
-/// Strategy:
-///   Build5Nines.SharpVector uses Bag-of-Words + cosine similarity internally â€”
-///   no external embedding API calls are needed for search.

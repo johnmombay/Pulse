@@ -1,3 +1,6 @@
+using Hangfire;
+using Pulse.Infrastructure;
+using Pulse.Jobs;
 using Pulse.Models;
 using System.Text;
 using System.Text.Json;
@@ -12,6 +15,7 @@ namespace Pulse.Services;
 public sealed class WorkflowRunner(
     ScheduledAgentRunner agentRunner,
     WorkflowService workflowService,
+    ITenantContext tenantContext,
     IHttpClientFactory httpClientFactory,
     ILogger<WorkflowRunner> logger)
 {
@@ -81,7 +85,19 @@ public sealed class WorkflowRunner(
         run.FinishedAt = DateTime.UtcNow;
         await workflowService.UpdateRunAsync(run, ct);
 
-        logger.LogInformation("WorkflowRun {RunId} finished � status={Status}", run.Id, run.Status);
+        // Self-learning: Workflow domain reflection (fire-and-forget)
+        if (!string.IsNullOrWhiteSpace(userId))
+        {
+            var tenantId = tenantContext.TenantId ?? Guid.Empty;
+            var outcome  = context.ToString();
+            var runSucceeded = run.Status is "completed" or "stopped";
+            BackgroundJob.Enqueue<AgentReflectionJob>(j =>
+                j.ReflectAsync(tenantId, userId, AgentDomain.Workflow,
+                    workflow.GoalDescription, workflow.Title, outcome,
+                    runSucceeded, null, JobCancellationToken.Null));
+        }
+
+        logger.LogInformation("WorkflowRun {RunId} finished — status={Status}", run.Id, run.Status);
         return run;
     }
 

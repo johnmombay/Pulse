@@ -27,11 +27,17 @@ public sealed class AgentTaskJob(
         var response = await orchestration.ExecuteAsync(
             sessionId, userMessage, userId, jobCancellationToken.ShutdownToken);
 
-        // Queue memory extraction in the background so it never delays the user
         if (!string.IsNullOrWhiteSpace(userId) && !string.IsNullOrWhiteSpace(response))
         {
+            // Memory extraction
             BackgroundJob.Enqueue<MemoryExtractionJob>(j =>
                 j.ExtractAsync(tenantId, userId, userMessage, response, null, JobCancellationToken.Null));
+
+            // Self-learning: Chat domain reflection
+            BackgroundJob.Enqueue<AgentReflectionJob>(j =>
+                j.ReflectAsync(tenantId, userId, AgentDomain.Chat,
+                    userMessage, string.Empty, response,
+                    true, null, JobCancellationToken.Null));
         }
     }
 }

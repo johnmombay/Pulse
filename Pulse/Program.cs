@@ -110,6 +110,8 @@ builder.Services.AddTransient<AgentOrchestrationService>();
 builder.Services.AddTransient<SpecializedAgentRunner>();
 builder.Services.AddTransient<AgentTaskJob>();
 builder.Services.AddTransient<MemoryExtractionJob>();
+builder.Services.AddTransient<AgentReflectionService>();
+builder.Services.AddTransient<Pulse.Jobs.AgentReflectionJob>();
 
 // ── Database tools (MCP-style, in-process) ────────────────────────────────────
 builder.Services.AddTransient<IDatabaseTools, DatabaseTools>();

@@ -155,6 +155,15 @@ public sealed class ScheduledTaskJob(
             success ? null : result,
             jobCt.ShutdownToken);
 
+        // Self-learning: Scheduler domain reflection
+        if (!string.IsNullOrWhiteSpace(task.UserId) && !string.IsNullOrWhiteSpace(result))
+        {
+            BackgroundJob.Enqueue<AgentReflectionJob>(j =>
+                j.ReflectAsync(tenantId, task.UserId, AgentDomain.Scheduler,
+                    task.Instructions ?? task.Title, string.Empty, result,
+                    success, null, JobCancellationToken.Null));
+        }
+
         logger.LogInformation(
             "ScheduledTaskJob completed for task {TaskId} — success={Success}", taskId, success);
     }

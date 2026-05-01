@@ -25,6 +25,7 @@ public sealed class ScheduledAgentRunner(
     WebSearchPlugin webSearchPlugin,
     McpService mcpService,
     LlmUsageService usageService,
+    AgentReflectionService reflectionService,
     ILogger<ScheduledAgentRunner> logger)
 {
     public async Task<(string Result, bool Success)> RunAsync(
@@ -98,6 +99,14 @@ public sealed class ScheduledAgentRunner(
                     "you need current information, news, prices, or any live data. " +
                     "Never say you cannot browse the web; call search_web instead.");
             history.AddSystemMessage(systemPrompt.ToString());
+
+            // Self-learning: inject relevant lessons from past runs
+            var lessons = await reflectionService.GetRelevantLessonsAsync(
+                instructions, AgentDomain.Scheduler, null, ct);
+            var lessonBlock = AgentReflectionService.FormatLessonBlock(lessons);
+            if (!string.IsNullOrEmpty(lessonBlock))
+                history.AddSystemMessage(lessonBlock);
+
             history.AddUserMessage(instructions);
 
             var executionSettings = new OpenAIPromptExecutionSettings

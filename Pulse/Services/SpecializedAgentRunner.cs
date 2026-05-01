@@ -36,6 +36,7 @@ public sealed class SpecializedAgentRunner(
     WebSearchPlugin webSearchPlugin,
     ChatHistoryService chatHistory,
     LlmUsageService usageService,
+    AgentReflectionService reflectionService,
     IHubContext<AgentHub> hubContext,
     ILogger<SpecializedAgentRunner> logger)
 {
@@ -242,6 +243,17 @@ public sealed class SpecializedAgentRunner(
                 }
             }
 
+            // ── Self-learning: inject relevant past lessons (Memory Loop) ──────
+            var lessons = await reflectionService.GetRelevantLessonsAsync(
+                task, AgentDomain.SubAgent, agent.Id, ct);
+            var lessonBlock = AgentReflectionService.FormatLessonBlock(lessons);
+            if (!string.IsNullOrEmpty(lessonBlock))
+            {
+                history.AddSystemMessage(lessonBlock);
+                logger.LogInformation(
+                    "SubAgent {Name}: injected {N} lesson(s)", agent.Name, lessons.Count);
+            }
+
             history.AddUserMessage(messageToSend);
 
             // ── Stream response ───────────────────────────────────────────────
@@ -299,6 +311,12 @@ public sealed class SpecializedAgentRunner(
             {
                 BackgroundJob.Enqueue<MemoryExtractionJob>(j =>
                     j.ExtractAsync(tenantId, userId, task, fullResponse, agent.Id, JobCancellationToken.Null));
+
+                // ── Self-learning: Reflection Loop (fire-and-forget) ──────────
+                BackgroundJob.Enqueue<AgentReflectionJob>(j =>
+                    j.ReflectAsync(tenantId, userId, AgentDomain.SubAgent,
+                        task, agent.SystemPrompt, fullResponse,
+                        true, agent.Id, JobCancellationToken.Null));
             }
 
             return fullResponse;

@@ -1,3 +1,5 @@
+using Hangfire;
+using Pulse.Jobs;
 using Telegram.Bot;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
@@ -112,6 +114,12 @@ public sealed class TelegramClientPool(
             bot, chatId,
             userSettings.UserId, userSettings.TenantId,
             text, ct);
+
+        // Self-learning: Telegram domain reflection
+        BackgroundJob.Enqueue<AgentReflectionJob>(j =>
+            j.ReflectAsync(userSettings.TenantId, userSettings.UserId, AgentDomain.Telegram,
+                text, string.Empty, string.Empty,
+                true, null, JobCancellationToken.Null));
     }
 
     private static async Task HandlePairAsync(

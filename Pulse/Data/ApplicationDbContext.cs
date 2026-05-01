@@ -19,6 +19,7 @@ namespace Pulse.Data
 		}
 
 		public DbSet<AgentMemory>          AgentMemories        => Set<AgentMemory>();
+		public DbSet<AgentLessonEntity>    AgentLessons         => Set<AgentLessonEntity>();
 		public DbSet<ChatMessageEntity>    ChatMessages         => Set<ChatMessageEntity>();
 		public DbSet<ScheduledTask>        ScheduledTasks       => Set<ScheduledTask>();
 		public DbSet<ScheduledTaskResult>  ScheduledTaskResults => Set<ScheduledTaskResult>();
@@ -54,14 +55,24 @@ namespace Pulse.Data
 			base.OnModelCreating(builder);
 
 			builder.Entity<AgentMemory>(e =>
-			{
-				e.HasIndex(m => m.TenantId);
-				e.HasIndex(m => m.UserId);
-				e.HasIndex(m => new { m.UserId, m.IsActive });
-				e.HasIndex(m => new { m.UserId, m.AgentDefinitionId, m.IsActive });
-				e.Property(m => m.AgentDefinitionId).HasMaxLength(64);
-				e.Property(m => m.EmbeddingJson).HasColumnType("nvarchar(max)");
-			});
+				{
+					e.HasIndex(m => m.TenantId);
+					e.HasIndex(m => m.UserId);
+					e.HasIndex(m => new { m.UserId, m.IsActive });
+					e.HasIndex(m => new { m.UserId, m.AgentDefinitionId, m.IsActive });
+					e.Property(m => m.AgentDefinitionId).HasMaxLength(64);
+					e.Property(m => m.EmbeddingJson).HasColumnType("nvarchar(max)");
+				});
+
+				builder.Entity<AgentLessonEntity>(e =>
+				{
+					e.HasIndex(l => l.TenantId);
+					e.HasIndex(l => new { l.TenantId, l.Domain });
+					e.HasIndex(l => new { l.TenantId, l.Domain, l.AgentDefinitionId });
+					e.Property(l => l.Outcome).HasColumnType("nvarchar(max)");
+					e.Property(l => l.LessonText).HasColumnType("nvarchar(max)");
+					e.Property(l => l.EmbeddingJson).HasColumnType("nvarchar(max)");
+				});
 
 			builder.Entity<ChatMessageEntity>(e =>
 			{
