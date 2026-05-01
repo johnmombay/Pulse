@@ -44,8 +44,9 @@ public class SchedulerModel(
         if (!isWorkflow && string.IsNullOrWhiteSpace(Input.Instructions))
             return new JsonResult(new { success = false, error = "Instructions are required." });
 
-        if (Input.DeliveryType is DeliveryType.Email or DeliveryType.Both &&
-            string.IsNullOrWhiteSpace(Input.DeliveryEmail))
+        bool needsEmail = Input.DeliveryType is DeliveryType.Email or DeliveryType.Both
+                       or DeliveryType.DashboardEmail or DeliveryType.EmailTelegram or DeliveryType.All;
+        if (needsEmail && string.IsNullOrWhiteSpace(Input.DeliveryEmail))
             return new JsonResult(new { success = false, error = "Email address is required for email delivery." });
 
         if (Input.FrequencyType == FrequencyType.OneTime && Input.ScheduledAt is null)

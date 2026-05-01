@@ -90,9 +90,14 @@ else
                         };
                         var delivIcon = task.DeliveryType switch
                         {
-                            DeliveryType.Email     => "📧",
-                            DeliveryType.Both      => "📊📧",
-                            _                      => "📊"
+                            DeliveryType.Email             => "📧",
+                            DeliveryType.Both              => "📊📧",
+                            DeliveryType.DashboardEmail    => "📊📧",
+                            DeliveryType.Telegram          => "✈️",
+                            DeliveryType.DashboardTelegram => "📊✈️",
+                            DeliveryType.EmailTelegram     => "📧✈️",
+                            DeliveryType.All               => "📊📧✈️",
+                            _                              => "📊"
                         };
                         <tr>
                             <td class="ps-3">
@@ -289,11 +294,22 @@ else
 
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Delivery</label>
-                        <select name="Input.DeliveryType" id="taskDelivery" class="form-select" onchange="onDeliveryChange()">
-                            <option value="0">📊 Dashboard only</option>
-                            <option value="1">📧 Email only</option>
-                            <option value="2">📊📧 Dashboard + Email</option>
-                        </select>
+                        <input type="hidden" name="Input.DeliveryType" id="taskDeliveryValue" value="0" />
+                        <div class="d-flex flex-wrap gap-3 mt-1">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="delivDashboard" onchange="onDeliveryChange()" />
+                                <label class="form-check-label" for="delivDashboard">📊 Dashboard</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="delivEmail" onchange="onDeliveryChange()" />
+                                <label class="form-check-label" for="delivEmail">📧 Email</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="delivTelegram" onchange="onDeliveryChange()" />
+                                <label class="form-check-label" for="delivTelegram">✈️ Telegram</label>
+                            </div>
+                        </div>
+                        <div class="form-text">Select one or more delivery channels.</div>
                     </div>
 
                     <div class="mb-3" id="taskEmailGroup" style="display:none">
@@ -349,8 +365,31 @@ else
     });
 
     window.onDeliveryChange = function () {
-        const v = document.getElementById('taskDelivery').value;
-        document.getElementById('taskEmailGroup').style.display = (v === '1' || v === '2') ? '' : 'none';
+        const d = document.getElementById('delivDashboard').checked;
+        const e = document.getElementById('delivEmail').checked;
+        const t = document.getElementById('delivTelegram').checked;
+        // Map to DeliveryType enum value
+        let val = 0; // Dashboard default
+        if (d && !e && !t) val = 0;       // Dashboard
+        else if (!d && e && !t) val = 1;  // Email
+        else if (d && e && !t) val = 4;   // DashboardEmail
+        else if (!d && !e && t) val = 3;  // Telegram
+        else if (d && !e && t) val = 5;   // DashboardTelegram
+        else if (!d && e && t) val = 6;   // EmailTelegram
+        else if (d && e && t) val = 7;    // All
+        document.getElementById('taskDeliveryValue').value = val;
+        document.getElementById('taskEmailGroup').style.display = e ? '' : 'none';
+    };
+
+    function setDeliveryCheckboxes(deliveryType) {
+        // deliveryType: 0=Dashboard,1=Email,2=Both(legacy),3=Telegram,4=DashEmail,5=DashTelegram,6=EmailTelegram,7=All
+        const d = [0,2,4,5,7].includes(deliveryType);
+        const e = [1,2,4,6,7].includes(deliveryType);
+        const t = [3,5,6,7].includes(deliveryType);
+        document.getElementById('delivDashboard').checked = d;
+        document.getElementById('delivEmail').checked     = e;
+        document.getElementById('delivTelegram').checked  = t;
+        onDeliveryChange();
     };
 
     window.onTaskTypeChange = function () {
@@ -373,8 +412,11 @@ else
         document.getElementById('taskFreqValue').style.display = '';
         document.getElementById('taskScheduledAt').value     = '';
         document.getElementById('taskScheduledAtGroup').style.display = 'none';
-        document.getElementById('taskDelivery').value        = '0';
-        document.getElementById('taskEmail').value           = '';
+        document.getElementById('delivDashboard').checked    = true;
+        document.getElementById('delivEmail').checked         = false;
+        document.getElementById('delivTelegram').checked      = false;
+        document.getElementById('taskDeliveryValue').value    = '0';
+        document.getElementById('taskEmail').value            = '';
         document.getElementById('taskEmailGroup').style.display = 'none';
         document.getElementById('taskEnabled').checked       = true;
         document.getElementById('taskFreqHint').textContent  = 'Runs daily (at 09:00 UTC).';
@@ -406,7 +448,6 @@ else
             document.getElementById('taskTitle').value        = t.title;
             document.getElementById('taskFreqType').value     = String(t.frequencyType);
             document.getElementById('taskFreqValue').value    = t.frequencyValue;
-            document.getElementById('taskDelivery').value     = String(t.deliveryType);
             document.getElementById('taskEmail').value        = t.deliveryEmail ?? '';
             document.getElementById('taskEnabled').checked    = t.isEnabled;
 
@@ -430,7 +471,7 @@ else
             }
 
             onFreqTypeChange();
-            onDeliveryChange();
+            setDeliveryCheckboxes(t.deliveryType);
         } catch (err) {
             document.getElementById('taskModalErrorText').textContent = err.message;
             document.getElementById('taskModalError').classList.remove('d-none');

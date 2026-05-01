@@ -7,11 +7,14 @@ public enum WizardStep
     Idle,
     AwaitingTitle,
     AwaitingInstructions,
+    AwaitingFrequency,       // natural language: "every day", "every 3 hours", "once", "weekly"
+    AwaitingScheduledAt,     // natural language: "tomorrow at 9am", "next Monday", "in 2 hours"
+    AwaitingDeliveryType,    // natural language: "email", "dashboard and telegram", "all"
+    AwaitingDeliveryEmail,
+
+    // kept for any in-flight sessions
     AwaitingFrequencyType,
     AwaitingFrequencyValue,
-    AwaitingScheduledAt,
-    AwaitingDeliveryType,
-    AwaitingDeliveryEmail,
 }
 
 public sealed class TelegramConversationState
