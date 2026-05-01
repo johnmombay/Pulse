@@ -341,8 +341,18 @@ public class SettingsModel(
                 Url           = McpServer.Url?.Trim(),
                 Command       = McpServer.Command?.Trim(),
                 Arguments     = McpServer.Arguments?.Trim(),
+                ApiKey        = string.IsNullOrWhiteSpace(McpServer.ApiKey) ? null : McpServer.ApiKey.Trim(),
                 IsEnabled     = McpServer.IsEnabled
             };
+
+            // Preserve the existing API key if the user left the field blank during an edit
+            if (!isNew && config.ApiKey is null)
+            {
+                var settings = await settingsService.GetAsync(TenantId);
+                var existing = (settings.McpServers ?? []).FirstOrDefault(s => s.Id == config.Id);
+                if (existing is not null)
+                    config.ApiKey = existing.ApiKey;
+            }
 
             await settingsService.AddOrUpdateMcpServerAsync(TenantId, config);
 
@@ -1114,6 +1124,14 @@ public class SettingsModel(
         return RedirectToPage();
     }
 
+    // ── Web search ────────────────────────────────────────────────────────────
+    public IActionResult OnPostSaveWebSearchAsync()
+    {
+        // Bing search removed — web search is now handled via MCP (DuckDuckGo).
+        TempData["WebSearchSuccess"] = "Web search is now provided via MCP servers.";
+        return RedirectToPage();
+    }
+
     // ── AgentMail ─────────────────────────────────────────────────────────────
     public async Task<IActionResult> OnPostSaveAgentMailAsync()
     {
@@ -1190,6 +1208,7 @@ public class SettingsModel(
         public string? Url { get; set; }
         public string? Command { get; set; }
         public string? Arguments { get; set; }
+        public string? ApiKey { get; set; }
         public bool IsEnabled { get; set; } = true;
     }
 

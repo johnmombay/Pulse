@@ -1,6 +1,7 @@
 using Pulse.Infrastructure;
 using Pulse.Models;
 using Pulse.Services;
+using Pulse.Services.Telegram;
 using Hangfire;
 
 namespace Pulse.Jobs;
@@ -73,7 +74,7 @@ public sealed class ScheduledTaskJob(
         }
 
         // ── Deliver ───────────────────────────────────────────────────────────
-        if (task.DeliveryType is DeliveryType.Dashboard or DeliveryType.Both)
+        if (task.DeliversToDashboard)
         {
             await schedulerService.SaveResultAsync(new ScheduledTaskResult
             {
@@ -86,7 +87,7 @@ public sealed class ScheduledTaskJob(
             }, jobCt.ShutdownToken);
         }
 
-        if (task.DeliveryType is DeliveryType.Email or DeliveryType.Both)
+        if (task.DeliversToEmail)
         {
             var globalMail = await globalAgentMailSettings.GetAsync();
             if (globalMail.IsEnabled &&
@@ -113,6 +114,37 @@ public sealed class ScheduledTaskJob(
                     logger.LogError(ex,
                         "ScheduledTaskJob: email delivery failed for task {TaskId}", taskId);
                 }
+            }
+        }
+
+        if (task.DeliversToTelegram)
+        {
+            try
+            {
+                var telegramSvc      = sp.GetRequiredService<TelegramBotService>();
+                var telegramSettings = sp.GetRequiredService<UserTelegramSettingsService>();
+                var userTelegram     = await telegramSettings.GetByUserIdAsync(task.UserId, jobCt.ShutdownToken);
+
+                if (userTelegram is { IsPaired: true, ChatId: { } chatId, BotToken: { } botToken })
+                {
+                    var icon    = success ? "✅" : "❌";
+                    var message = $"{icon} *{task.Title}*\n\n{result}";
+                    await telegramSvc.SendMessageAsync(botToken, chatId, message, jobCt.ShutdownToken);
+
+                    logger.LogInformation(
+                        "ScheduledTaskJob: Telegram message sent for task {TaskId}", taskId);
+                }
+                else
+                {
+                    logger.LogWarning(
+                        "ScheduledTaskJob: task {TaskId} has Telegram delivery but user is not paired.",
+                        taskId);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex,
+                    "ScheduledTaskJob: Telegram delivery failed for task {TaskId}", taskId);
             }
         }
 

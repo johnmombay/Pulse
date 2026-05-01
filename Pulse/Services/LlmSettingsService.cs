@@ -266,6 +266,9 @@ public sealed class LlmSettingsService
     public Task SaveTerminalSettingsAsync(Guid tenantId, TerminalSettings settings) =>
         UpdateScalarAsync(tenantId, row => row.Terminal = Clone(settings));
 
+    public Task SaveWebSearchSettingsAsync(Guid tenantId, object? _ = null) =>
+        Task.CompletedTask; // No-op: Bing search removed; web search now via MCP
+
     public Task SaveAgentMailSettingsAsync(AgentMailSettings settings) =>
         Task.CompletedTask; // TODO(multi-tenancy): AgentMail moved to GlobalAgentMailSettings
 
@@ -447,17 +450,19 @@ public sealed class LlmSettingsService
     {
         Id = c.Id, Name = c.Name, TransportType = c.TransportType,
         Url = c.Url, Command = c.Command, Arguments = c.Arguments,
-        IsEnabled = c.IsEnabled, TenantId = tenantId
+        ApiKey = c.ApiKey, IsEnabled = c.IsEnabled, TenantId = tenantId
     };
     private static void ApplyMcp(McpServerEntity e, McpServerConfig c)
     {
         e.Name = c.Name; e.TransportType = c.TransportType;
-        e.Url = c.Url; e.Command = c.Command; e.Arguments = c.Arguments; e.IsEnabled = c.IsEnabled;
+        e.Url = c.Url; e.Command = c.Command; e.Arguments = c.Arguments;
+        e.ApiKey = c.ApiKey; e.IsEnabled = c.IsEnabled;
     }
     private static McpServerConfig FromEntity(McpServerEntity e) => new()
     {
         Id = e.Id, Name = e.Name, TransportType = e.TransportType,
-        Url = e.Url, Command = e.Command, Arguments = e.Arguments, IsEnabled = e.IsEnabled
+        Url = e.Url, Command = e.Command, Arguments = e.Arguments,
+        ApiKey = e.ApiKey, IsEnabled = e.IsEnabled
     };
 
     private static SkillEntity ToEntity(SkillConfig c, Guid tenantId) => new()

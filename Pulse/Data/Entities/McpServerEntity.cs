@@ -9,5 +9,6 @@ public class McpServerEntity : ITenantOwned
     public string? Url           { get; set; }
     public string? Command       { get; set; }
     public string? Arguments     { get; set; }
+    public string? ApiKey        { get; set; }
     public bool    IsEnabled     { get; set; } = true;
 }

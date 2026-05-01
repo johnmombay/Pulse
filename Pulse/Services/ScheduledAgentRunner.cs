@@ -1,6 +1,7 @@
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
+using ModelContextProtocol.Client;
 using Pulse.Infrastructure;
 
 namespace Pulse.Services;
@@ -21,12 +22,14 @@ public sealed class ScheduledAgentRunner(
     TerminalPlugin terminalPlugin,
     AgentMailPlugin agentMailPlugin,
     FlatFileDataPlugin flatFileDataPlugin,
+    McpService mcpService,
     LlmUsageService usageService,
     ILogger<ScheduledAgentRunner> logger)
 {
     public async Task<(string Result, bool Success)> RunAsync(
         string instructions, CancellationToken ct = default)
     {
+        McpClient[]? mcpClients = null;
         try
         {
             var settings = await llmSettings.GetAsync(tenantContext.TenantId ?? Guid.Empty);
@@ -63,7 +66,17 @@ public sealed class ScheduledAgentRunner(
             if (enabledFlatFiles.Count > 0)
                 kernel.Plugins.AddFromObject(flatFileDataPlugin, "FlatFileData");
 
-            // Chart capture — no SignalR in scheduled runs; specs are embedded in the output
+            // MCP servers (includes DuckDuckGo search and any others configured by the tenant)
+            var enabledMcp = (settings.McpServers ?? []).Where(s => s.IsEnabled).ToList();
+            if (enabledMcp.Count > 0)
+            {
+                var (mcpPlugins, clients) = await mcpService.CreatePluginsAsync(enabledMcp, ct);
+                mcpClients = clients;
+                foreach (var plugin in mcpPlugins)
+                    kernel.Plugins.Add(plugin);
+            }
+
+            // Chart capture
             var chartPlugin = new ScheduledChartPlugin();
             kernel.Plugins.AddFromObject(chartPlugin, "ChartGenerator");
 
@@ -117,6 +130,12 @@ public sealed class ScheduledAgentRunner(
         {
             logger.LogError(ex, "ScheduledAgentRunner failed");
             return ($"Execution error: {ex.Message}", false);
+        }
+        finally
+        {
+            if (mcpClients is not null)
+                foreach (var c in mcpClients)
+                    await c.DisposeAsync();
         }
     }
 }

@@ -19,8 +19,8 @@ public class AppSettingsEntity : ITenantOwned
     public string? LogoFileName { get; set; }
     public string? LogoVersion  { get; set; }
 
-    public TerminalSettings Terminal  { get; set; } = new();
-    public SecuritySettings Security  { get; set; } = new();
+    public TerminalSettings  Terminal  { get; set; } = new();
+    public SecuritySettings  Security  { get; set; } = new();
 
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
 }

@@ -1,0 +1,157 @@
+﻿@page
+@model Pulse.Areas.Identity.Pages.Account.Manage.TelegramModel
+@{
+    ViewData["Title"] = "Telegram";
+    ViewData["ActivePage"] = ManageNavPages.Telegram;
+    Layout = "/Views/Shared/_Layout.cshtml";
+
+    var msgType  = "";
+    var msgText  = "";
+    var pairCode = "";
+    if (!string.IsNullOrEmpty(Model.StatusMessage))
+    {
+        if (Model.StatusMessage.StartsWith("CODE:"))
+        {
+            pairCode = Model.StatusMessage[5..];
+            msgType  = "success";
+            msgText  = "Pair code generated — valid for 15 minutes.";
+        }
+        else if (Model.StatusMessage.StartsWith("WARN:"))
+        {
+            msgType = "warning";
+            msgText = Model.StatusMessage[5..];
+        }
+        else
+        {
+            msgType = "success";
+            msgText = Model.StatusMessage.StartsWith("OK:") ? Model.StatusMessage[3..] : Model.StatusMessage;
+        }
+    }
+}
+
+<div class="row justify-content-center">
+    <div class="col-lg-6 col-md-8">
+
+        <h4 class="fw-bold mb-1">
+            <i class="bi bi-telegram me-2 text-primary"></i>Telegram Integration
+        </h4>
+        <p class="text-muted small mb-4">
+            Connect your own Telegram bot to create scheduled tasks and receive results directly in Telegram.
+        </p>
+
+        @if (!string.IsNullOrEmpty(msgText))
+        {
+            <div class="alert alert-@msgType alert-dismissible" role="alert">
+                @msgText
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(pairCode))
+        {
+            <div class="alert alert-info d-flex align-items-center gap-3 mb-4">
+                <i class="bi bi-key fs-4"></i>
+                <div>
+                    <div class="fw-semibold mb-1">Send this command to your Telegram bot:</div>
+                    <code class="fs-5 user-select-all">/pair @pairCode</code>
+                    <div class="text-muted small mt-1">Expires in 15 minutes.</div>
+                </div>
+            </div>
+        }
+
+        <div class="d-flex align-items-center gap-2 mb-4">
+            @if (Model.IsPaired)
+            {
+                <span class="badge bg-success fs-6"><i class="bi bi-check-circle me-1"></i>Paired</span>
+            }
+            else if (Model.HasBotToken)
+            {
+                <span class="badge bg-warning text-dark fs-6"><i class="bi bi-hourglass-split me-1"></i>Bot token saved — not paired yet</span>
+            }
+            else
+            {
+                <span class="badge bg-secondary fs-6"><i class="bi bi-x-circle me-1"></i>Not configured</span>
+            }
+        </div>
+
+        <div class="bp-card p-4 mb-3">
+            <h6 class="fw-semibold mb-3">
+                <span class="badge bg-primary rounded-circle me-2">1</span>Save your bot token
+            </h6>
+            <p class="text-muted small">
+                Create a bot via <a href="https://t.me/BotFather" target="_blank">&#64;BotFather</a> on Telegram,
+                copy the token it gives you, and paste it below.
+            </p>
+            <form method="post" asp-page-handler="SaveBotToken">
+                @Html.AntiForgeryToken()
+                <div class="mb-3">
+                    <label asp-for="BotToken" class="form-label fw-medium">Bot Token</label>
+                    <input asp-for="BotToken" class="form-control font-monospace"
+                           placeholder="123456789:ABCdefGhIJKlmNoPQRstuVWXyz"
+                           autocomplete="off" />
+                    <span asp-validation-for="BotToken" class="text-danger small"></span>
+                    <div class="form-text">Stored securely and never shown in full again.</div>
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="bi bi-floppy me-1"></i>Save Token
+                </button>
+            </form>
+        </div>
+
+        <div class="bp-card p-4 mb-3 @(!Model.HasBotToken ? "opacity-50 pe-none" : "")">
+            <h6 class="fw-semibold mb-3">
+                <span class="badge bg-primary rounded-circle me-2">2</span>Pair your Telegram account
+            </h6>
+            <p class="text-muted small mb-3">
+                Generate a pair code, then open your bot in Telegram and send:
+                <code>/pair YOURCODE</code>
+            </p>
+
+            @if (Model.PairCode is not null && Model.PairCodeExpiresAt > DateTime.UtcNow)
+            {
+                <div class="alert alert-light border d-flex align-items-center gap-3 mb-3">
+                    <i class="bi bi-key text-primary fs-5"></i>
+                    <div>
+                        <div class="small text-muted">Current pair code (expires @Model.PairCodeExpiresAt.Value.ToLocalTime().ToString("HH:mm")):</div>
+                        <code class="fs-5 fw-bold user-select-all">/pair @Model.PairCode</code>
+                    </div>
+                </div>
+            }
+
+            <form method="post" asp-page-handler="GeneratePairCode" class="d-inline me-2">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-outline-primary btn-sm" @(!Model.HasBotToken ? "disabled" : "")>
+                    <i class="bi bi-arrow-repeat me-1"></i>Generate New Pair Code
+                </button>
+            </form>
+
+            @if (Model.IsPaired)
+            {
+                <form method="post" asp-page-handler="Unpair" class="d-inline">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn-outline-danger btn-sm"
+                            onclick="return confirm('Unpair your Telegram account?')">
+                        <i class="bi bi-unlink me-1"></i>Unpair
+                    </button>
+                </form>
+            }
+        </div>
+
+        <div class="bp-card p-4 @(!Model.IsPaired ? "opacity-50 pe-none" : "")">
+            <h6 class="fw-semibold mb-3">
+                <span class="badge bg-primary rounded-circle me-2">3</span>Create tasks from Telegram
+            </h6>
+            <p class="text-muted small mb-2">Once paired, open your bot and use these commands:</p>
+            <ul class="list-unstyled small mb-0">
+                <li class="mb-1"><code>/newtask</code> — start the task creation wizard</li>
+                <li class="mb-1"><code>/cancel</code> — cancel current wizard</li>
+                <li><code>/pair CODE</code> — re-pair this account</li>
+            </ul>
+        </div>
+
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

@@ -431,7 +431,7 @@
                             <td class="text-end pe-3">
                                 <div class="btn-group btn-group-sm">
                                     <button type="button" class="btn btn-outline-secondary"
-                                            onclick="openEditMcpModal('@srv.Id','@Html.Raw(srv.Name.Replace("'","\\\'"))','@srv.TransportType','@(srv.Url ?? "")','@(srv.Command ?? "")','@(srv.Arguments ?? "")','@srv.IsEnabled')">
+                                            onclick="openEditMcpModal('@srv.Id','@Html.Raw(srv.Name.Replace("'","\\\'"))','@srv.TransportType','@(srv.Url ?? "")','@(srv.Command ?? "")','@(srv.Arguments ?? "")','@(srv.ApiKey != null ? "__stored__" : "")','@srv.IsEnabled')">
                                         ✏️
                                     </button>
                                     <form method="post" asp-page-handler="ToggleMcp" class="d-inline">
@@ -534,6 +534,14 @@
                                    spellcheck="false" style="font-family:monospace" />
                             <div class="form-text">Space-separated. Wrap paths with spaces in quotes is not yet supported.</div>
                         </div>
+                    </div>
+
+                    <div class="mb-3 mt-3">
+                        <label asp-for="McpServer.ApiKey" class="form-label fw-semibold">API Key / Bearer Token</label>
+                        <input asp-for="McpServer.ApiKey" id="mcpApiKey" class="form-control"
+                               type="password" placeholder="Leave blank if not required"
+                               spellcheck="false" autocomplete="off" />
+                        <div class="form-text">Sent as <code>Authorization: Bearer …</code> for HTTP servers that require authentication.</div>
                     </div>
 
                     <div class="form-check form-switch mt-3">
@@ -2572,6 +2580,7 @@
         document.getElementById('mcpUrl').value       = '';
         document.getElementById('mcpCommand').value   = '';
         document.getElementById('mcpArguments').value = '';
+        document.getElementById('mcpApiKey').value    = '';
         document.getElementById('mcpEnabled').checked = true;
         updateTransportFields('http');
     }
@@ -2582,7 +2591,7 @@
         bootstrap.Modal.getOrCreateInstance(document.getElementById('mcpModal')).show();
     };
 
-    window.openEditMcpModal = function (id, name, type, url, cmd, args, enabled) {
+    window.openEditMcpModal = function (id, name, type, url, cmd, args, apiKey, enabled) {
         document.getElementById('mcpModalLabel').textContent = 'Edit MCP Server';
         document.getElementById('mcpModalError').classList.add('d-none');
         document.getElementById('mcpId').value        = id;
@@ -2591,6 +2600,9 @@
         document.getElementById('mcpUrl').value       = url;
         document.getElementById('mcpCommand').value   = cmd;
         document.getElementById('mcpArguments').value = args;
+        // If a key is stored, show placeholder so user knows it exists; leave blank to keep unchanged
+        document.getElementById('mcpApiKey').value    = '';
+        document.getElementById('mcpApiKey').placeholder = apiKey === '__stored__' ? '(stored — leave blank to keep)' : 'Leave blank if not required';
         document.getElementById('mcpEnabled').checked = (enabled === 'True');
         updateTransportFields(type);
         bootstrap.Modal.getOrCreateInstance(document.getElementById('mcpModal')).show();

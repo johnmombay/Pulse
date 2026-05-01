@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Pulse.Data;
 
@@ -11,9 +12,11 @@ using Pulse.Data;
 namespace Pulse.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260501091908_AddWebSearchSettings")]
+    partial class AddWebSearchSettings
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -608,10 +611,6 @@ namespace Pulse.Data.Migrations
                     b.Property<string>("Id")
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
-
-                    b.Property<string>("ApiKey")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("Arguments")
                         .HasMaxLength(2000)
@@ -1617,10 +1616,40 @@ namespace Pulse.Data.Migrations
                                 .HasForeignKey("AppSettingsEntityId");
                         });
 
+                    b.OwnsOne("Pulse.Models.WebSearchSettings", "WebSearch", b1 =>
+                        {
+                            b1.Property<int>("AppSettingsEntityId")
+                                .HasColumnType("int");
+
+                            b1.Property<string>("ApiKey")
+                                .IsRequired()
+                                .HasMaxLength(256)
+                                .HasColumnType("nvarchar(256)")
+                                .HasColumnName("WebSearch_ApiKey");
+
+                            b1.Property<bool>("IsEnabled")
+                                .HasColumnType("bit")
+                                .HasColumnName("WebSearch_IsEnabled");
+
+                            b1.Property<int>("MaxResults")
+                                .HasColumnType("int")
+                                .HasColumnName("WebSearch_MaxResults");
+
+                            b1.HasKey("AppSettingsEntityId");
+
+                            b1.ToTable("AppSettings");
+
+                            b1.WithOwner()
+                                .HasForeignKey("AppSettingsEntityId");
+                        });
+
                     b.Navigation("Security")
                         .IsRequired();
 
                     b.Navigation("Terminal")
+                        .IsRequired();
+
+                    b.Navigation("WebSearch")
                         .IsRequired();
                 });
 

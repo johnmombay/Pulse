@@ -17,5 +17,8 @@ public class McpServerConfig
     /// <summary>Space-separated arguments passed to the stdio process.</summary>
     public string? Arguments { get; set; }
 
+    /// <summary>Optional Bearer token sent as Authorization header (HTTP transport only).</summary>
+    public string? ApiKey { get; set; }
+
     public bool IsEnabled { get; set; } = true;
 }

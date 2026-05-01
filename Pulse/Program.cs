@@ -166,6 +166,14 @@ builder.Services.AddSingleton<SchedulerService>();
 builder.Services.AddTransient<ScheduledAgentRunner>();
 builder.Services.AddTransient<ScheduledTaskJob>();
 
+// ── Telegram ──────────────────────────────────────────────────────────────────
+builder.Services.AddSingleton<Pulse.Services.Telegram.TelegramClientPool>();
+builder.Services.AddSingleton<Pulse.Services.Telegram.TelegramConversationService>();
+builder.Services.AddSingleton<Pulse.Services.Telegram.UserTelegramSettingsService>();
+builder.Services.AddSingleton<Pulse.Services.Telegram.TelegramBotService>();
+builder.Services.AddHostedService(sp =>
+	sp.GetRequiredService<Pulse.Services.Telegram.TelegramBotService>());
+
 // -- Workflows
 builder.Services.AddTransient<WorkflowService>();
 builder.Services.AddTransient<WorkflowRunner>();

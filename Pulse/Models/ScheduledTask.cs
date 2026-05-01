@@ -61,4 +61,25 @@ public class ScheduledTask : ITenantOwned
 
     // Navigation
     public ICollection<ScheduledTaskResult> Results { get; set; } = [];
+
+    // ── Delivery helpers ──────────────────────────────────────────────────────
+    public bool DeliversToDashboard =>
+        DeliveryType is DeliveryType.Dashboard
+                     or DeliveryType.Both
+                     or DeliveryType.DashboardEmail
+                     or DeliveryType.DashboardTelegram
+                     or DeliveryType.All;
+
+    public bool DeliversToEmail =>
+        DeliveryType is DeliveryType.Email
+                     or DeliveryType.Both
+                     or DeliveryType.DashboardEmail
+                     or DeliveryType.EmailTelegram
+                     or DeliveryType.All;
+
+    public bool DeliversToTelegram =>
+        DeliveryType is DeliveryType.Telegram
+                     or DeliveryType.DashboardTelegram
+                     or DeliveryType.EmailTelegram
+                     or DeliveryType.All;
 }

@@ -2,6 +2,7 @@ using Pulse.Models;
 using Microsoft.Extensions.AI;
 using Microsoft.SemanticKernel;
 using ModelContextProtocol.Client;
+using System.Net.Http.Headers;
 using System.Text.RegularExpressions;
 
 namespace Pulse.Services;
@@ -78,7 +79,10 @@ public sealed class McpService(ILoggerFactory loggerFactory, ILogger<McpService>
                     Endpoint = new Uri(config.Url
                         ?? throw new InvalidOperationException(
                             $"MCP server '{config.Name}' (http) is missing URL.")),
-                    Name = config.Name
+                    Name = config.Name,
+                    AdditionalHeaders = !string.IsNullOrWhiteSpace(config.ApiKey)
+                        ? new Dictionary<string, string> { ["Authorization"] = $"Bearer {config.ApiKey.Trim()}" }
+                        : null
                 },
                 loggerFactory: loggerFactory);
 

@@ -1,4 +1,4 @@
-using Pulse.Data.Entities;
+﻿using Pulse.Data.Entities;
 using Pulse.Infrastructure;
 using Pulse.Models;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -47,6 +47,7 @@ namespace Pulse.Data
 		public DbSet<PaymentGatewaySettings>   PaymentGatewaySettings   => Set<PaymentGatewaySettings>();
 		public DbSet<Invoice>                  Invoices                 => Set<Invoice>();
 		public DbSet<InAppNotification>        InAppNotifications       => Set<InAppNotification>();
+		public DbSet<UserTelegramSettings>     UserTelegramSettings     => Set<UserTelegramSettings>();
 
 		protected override void OnModelCreating(ModelBuilder builder)
 		{
@@ -123,10 +124,10 @@ namespace Pulse.Data
 				});
 
 				e.OwnsOne(s => s.Security, sc =>
-				{
-					sc.Property(p => p.MaxFailedLoginAttempts).HasColumnName("Security_MaxFailedLoginAttempts");
-					sc.Property(p => p.LoginLockoutHours).HasColumnName("Security_LoginLockoutHours");
-				});
+					{
+						sc.Property(p => p.MaxFailedLoginAttempts).HasColumnName("Security_MaxFailedLoginAttempts");
+						sc.Property(p => p.LoginLockoutHours).HasColumnName("Security_LoginLockoutHours");
+					});
 			});
 
 			builder.Entity<AppApiKeyEntity>(e =>
@@ -144,6 +145,7 @@ namespace Pulse.Data
 				e.Property(m => m.Url).HasMaxLength(500);
 				e.Property(m => m.Command).HasMaxLength(500);
 				e.Property(m => m.Arguments).HasMaxLength(2000);
+				e.Property(m => m.ApiKey).HasMaxLength(500);
 			});
 
 			builder.Entity<SkillEntity>(e =>
@@ -302,11 +304,21 @@ namespace Pulse.Data
 				 .OnDelete(DeleteBehavior.Cascade);
 			});
 
+			builder.Entity<UserTelegramSettings>(e =>
+			{
+				e.HasIndex(t => t.UserId).IsUnique();
+				e.Property(t => t.BotToken).HasMaxLength(200);
+				e.Property(t => t.PairCode).HasMaxLength(32);
+				e.HasOne(t => t.User)
+				 .WithMany()
+				 .HasForeignKey(t => t.UserId)
+				 .OnDelete(DeleteBehavior.Cascade);
+			});
+
 			builder.Entity<GlobalAgentMailSettings>(e =>
 			{
 				e.Property(s => s.Id).ValueGeneratedNever();
 				e.ToTable(t => t.HasCheckConstraint("CK_GlobalAgentMailSettings_Singleton", "[Id] = 1"));
-				e.Property(s => s.ApiBaseUrl).HasMaxLength(500);
 				e.Property(s => s.ApiKey).HasMaxLength(500);
 				e.Property(s => s.FromAddress).HasMaxLength(200);
 				e.Property(s => s.FromName).HasMaxLength(200);
